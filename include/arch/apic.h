@@ -1,6 +1,6 @@
 #pragma once
 #include <stdint.h>
-#include "acpi.h"
+#include "acpi/acpi.h"
 
 struct __attribute__((packed)) IOAPICRecord {
     uint8_t  type;      // 1
@@ -41,7 +41,7 @@ inline void lapic_eoi() {
 
 static inline uint32_t ioapic_read(volatile uint32_t* base, uint8_t reg) {
     base[0] = reg;
-    return base[4]; // IOWIN is at offset 0x10 = 4 uint32_ts away
+    return base[4];
 }
 
 static inline void ioapic_write(volatile uint32_t* base, uint8_t reg, uint32_t val) {
@@ -59,7 +59,7 @@ static void ioapic_redirect(volatile uint32_t* ioapic, uint32_t slot, uint8_t ve
 }
 
 inline void apic_init(MADT* madt) {
-    // start with ISA defaults: identity-mapped GSI, active-high, edge-triggered
+
     uint32_t irq_to_gsi[16];
     bool     active_low[16];
     bool     level_trig[16];
@@ -93,13 +93,13 @@ inline void apic_init(MADT* madt) {
     }
 
     lapic_ptr = (volatile uint32_t*)(uintptr_t)madt->LocalApicAddress;
-    lapic_write(LAPIC_TPR, 0);      // accept all interrupt priorities
-    lapic_write(LAPIC_SVR, 0x1FF); // enable LAPIC; spurious → vector 255
-
+    lapic_write(LAPIC_TPR, 0);
+    lapic_write(LAPIC_SVR, 0x1FF);
     uint8_t lapic_id = (lapic_read(LAPIC_ID) >> 24) & 0xFF;
 
     // route IRQ 1 (PS/2 keyboard) → vector 33
-    uint32_t gsi  = irq_to_gsi[1];
-    uint32_t slot = gsi - gsi_base;
-    ioapic_redirect(ioapic, slot, 33, lapic_id, active_low[1], level_trig[1]);
+    ioapic_redirect(ioapic, irq_to_gsi[1]  - gsi_base, 33, lapic_id, active_low[1],  level_trig[1]);
+
+    // route IRQ 12 (PS/2 mouse) → vector 44
+    ioapic_redirect(ioapic, irq_to_gsi[12] - gsi_base, 44, lapic_id, active_low[12], level_trig[12]);
 }

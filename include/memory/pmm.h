@@ -2,6 +2,8 @@
 #include <stdint.h>
 #include "mmap.h"
 
+#define PAGE_SIZE 4096
+
 enum class PMM_STATUS {
     ALLOC_SUCCESS,
     ALLOC_FAIL,

@@ -1,14 +1,20 @@
 #include <efi.h>
 #include <efilib.h>
 
-#include "framebuffer.h"
-#include "mmap.h"
-#include "acpi.h"
+#include "graphics/framebuffer.h"
+#include "memory/mmap.h"
+#include "acpi/acpi.h"
+
+struct KernelParams {
+    FrameBuffer* fb;
+    MMap* mm;
+    MADT* madt;
+};
 
 #define KERNEL_LOAD_ADDR 0x100000ULL
 #define KERNEL_RESERVE_PAGES 256
 
-typedef void __attribute__((sysv_abi)) (*KernelEntry)(FrameBuffer *fb, MMap *mm, MADT *madt);
+typedef void __attribute__((sysv_abi)) (*KernelEntry)(struct KernelParams *params);
 
 static EFI_STATUS load_kernel(EFI_HANDLE ImageHandle, EFI_PHYSICAL_ADDRESS *LoadAddr) {
     EFI_STATUS Status;
@@ -198,8 +204,13 @@ extern "C" EFI_STATUS efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemT
             return Status;
     }
 
+    struct KernelParams params;
+    params.fb = &fb;
+    params.mm = &mm;
+    params.madt = madt;
+
     KernelEntry kernel = (KernelEntry)(UINTN)KernelAddr;
-    kernel(&fb, &mm, madt);
+    kernel(&params);
 
     __builtin_unreachable();
 

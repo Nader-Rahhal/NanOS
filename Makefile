@@ -55,12 +55,14 @@ kernel.bin: kernel.elf
 esp/kernel.bin: kernel.bin
 	cp $< $@
 
-run:
-	qemu-system-x86_64 -m 17408 -bios RELEASEX64_OVMF.fd \
-	    -drive format=raw,file=fat:rw:esp \
-	    -serial stdio -display gtk \
-		-device VGA,vgamem_mb=64
+ata_disk.img:
+	qemu-img create -f raw $@ 16M
 
+run: ata_disk.img
+	qemu-system-x86_64 -m 4096 -bios RELEASEX64_OVMF.fd \
+	    -drive format=raw,file=fat:rw:esp,if=virtio \
+	    -drive format=raw,file=ata_disk.img,if=ide,index=0 \
+	    -serial stdio -display gtk
 clean:
 	rm -f *.o *.elf *.bin *.EFI
 	rm -rf esp

@@ -1,5 +1,7 @@
 #include "util.h"
 
+namespace util {
+
 uint32_t strlen(const char* s) {
     uint32_t n = 0;
     while (s[n]) n++;
@@ -34,6 +36,16 @@ uint8_t inb(uint16_t port) {
     return val;
 }
 
+void outw(uint16_t port, uint16_t val) {
+    __asm__ volatile ("outw %0, %1" :: "a"(val), "Nd"(port));
+}
+
+uint16_t inw(uint16_t port) {
+    uint16_t val;
+    __asm__ volatile ("inw %1, %0" : "=a"(val) : "Nd"(port));
+    return val;
+}
+
 void io_wait() {
     outb(0x80, 0);
 }
@@ -58,4 +70,6 @@ void serial_putdec(uint64_t val) {
     char buf[21];
     u64_to_str(val, buf);
     serial_puts(buf);
+}
+
 }

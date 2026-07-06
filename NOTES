@@ -14,3 +14,12 @@ GDT:
 - UEFI gives us a GDT but we should set up our own anyway
 
 
+TODO:
+- cursor so we can close windows and stuff
+- basic file system
+- process mgmt so we can run commands
+- dynamic memory allocator
+- better config organization
+- disk driver
+
+NVME:

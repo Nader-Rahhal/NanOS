@@ -70,25 +70,6 @@ struct SystemSegmentDescriptor create_system_descriptor(uint64_t base, uint32_t 
     return desc;
 }
 
-inline void gdt_init() {
-    static struct GDT gdt;
-    static struct TSS tss;
-
-    gdt.null_descriptor        = create_descriptor(0x00, 0x00);
-    gdt.kernel_code_descriptor = create_descriptor(0x9A, 0xAF);
-    gdt.kernel_data_descriptor = create_descriptor(0x92, 0xCF);
-    gdt.user_code_descriptor   = create_descriptor(0xFA, 0xAF);
-    gdt.user_data_descriptor   = create_descriptor(0xF2, 0xCF);
-    gdt.tss_descriptor         = create_system_descriptor((uint64_t)&tss, sizeof(tss) - 1, 0x89);
-
-    struct GDTR gdtr;
-    gdtr.size   = sizeof(gdt) - 1;
-    gdtr.offset = (uint64_t)&gdt;
-    load_gdt(&gdtr);
-
-    __asm__ volatile ("ltr %0" :: "r"((uint16_t)GDT_OFFSET_TSS));
-}
-
 void load_gdt(GDTR* gdtr) {
     __asm__ volatile (
         "lgdt %0\n"
@@ -107,4 +88,23 @@ void load_gdt(GDTR* gdtr) {
         : "m"(*gdtr)
         : "rax", "memory"
     );
+}
+
+inline void gdt_init() {
+    static struct GDT gdt;
+    static struct TSS tss;
+
+    gdt.null_descriptor        = create_descriptor(0x00, 0x00);
+    gdt.kernel_code_descriptor = create_descriptor(0x9A, 0xAF);
+    gdt.kernel_data_descriptor = create_descriptor(0x92, 0xCF);
+    gdt.user_code_descriptor   = create_descriptor(0xFA, 0xAF);
+    gdt.user_data_descriptor   = create_descriptor(0xF2, 0xCF);
+    gdt.tss_descriptor         = create_system_descriptor((uint64_t)&tss, sizeof(tss) - 1, 0x89);
+
+    struct GDTR gdtr;
+    gdtr.size   = sizeof(gdt) - 1;
+    gdtr.offset = (uint64_t)&gdt;
+    load_gdt(&gdtr);
+
+    __asm__ volatile ("ltr %0" :: "r"((uint16_t)GDT_OFFSET_TSS));
 }
