@@ -2,6 +2,7 @@
 #include "graphics/framebuffer.h"
 #include "graphics/window.h"
 
+#include "elf.h"
 #include "memory/mmap.h"
 #include "acpi/acpi.h"
 #include "arch/apic.h"
@@ -16,6 +17,10 @@
 #include "drivers/ata.h"
 
 extern "C" { extern uint8_t _binary_font_psf_start[]; }
+
+extern "C" uint8_t _binary_hello_elf_size[];
+extern "C" { extern uint8_t _binary_hello_elf_start[]; }
+extern "C" { extern uint8_t _binary_hello_elf_end[]; }
 
 struct KernelServices {
     PhysicalMemoryAllocator* allocator;
@@ -103,6 +108,49 @@ void test_allocator(PhysicalMemoryAllocator& allocator) {
     allocator.free(c, PAGE_SIZE);
 }
 
+#define PROGRAM_SLOT 0x800000
+
+void launch_program(){
+    size_t hello_size = (size_t)&_binary_hello_elf_size;
+
+    struct ELF_HEADER efi_hdr;
+    util::memcpy(&efi_hdr, _binary_hello_elf_start, sizeof(ELF_HEADER));    
+
+    util::serial_puts("ELF Header:\r\n");
+    util::serial_puts("Magic: ");
+    util::serial_puthex(efi_hdr.magic);
+    util::serial_puts("\r\nEntry point: ");
+    util::serial_putdec(efi_hdr.entry_point);
+    util::serial_puts("\r\nProgram header offset: ");
+    util::serial_putdec(efi_hdr.ph_offset);
+    util::serial_puts("\r\nSection header offset: ");
+    util::serial_putdec(efi_hdr.sh_offset);
+    util::serial_puts("\r\nNumber of program headers: ");
+    util::serial_putdec(efi_hdr.ph_entry_count);
+    util::serial_puts("\r\nNumber of section headers: ");
+    util::serial_putdec(efi_hdr.sh_entry_count);
+    util::serial_puts("\r\n");
+
+    struct ELF_PROGRAM_HEADER phdr_entries[efi_hdr.ph_entry_count];
+    util::memcpy(&phdr_entries, _binary_hello_elf_start + efi_hdr.ph_offset, efi_hdr.ph_entry_count * sizeof(ELF_PROGRAM_HEADER));
+
+    for (uint16_t i = 0; i < efi_hdr.ph_entry_count; i++) {
+        struct ELF_PROGRAM_HEADER& phdr = phdr_entries[i];
+        if (phdr.type != 1) {
+            util::serial_puts("Skipping non-loadable program header ");
+            util::serial_putdec(i);
+            util::serial_puts("\r\n");
+            continue;
+        }
+
+        util::memcpy((void*)phdr.vaddr, _binary_hello_elf_start + phdr.offset, phdr.file_size);
+    }
+
+    typedef void (*program_entry_t)();
+    program_entry_t entry = (program_entry_t)efi_hdr.entry_point;
+    entry();
+}
+
 extern "C" __attribute__((section(".text.kmain"))) void kmain(struct KernelParams* params)
 {
 
@@ -132,6 +180,8 @@ extern "C" __attribute__((section(".text.kmain"))) void kmain(struct KernelParam
 
     enable_interrupts();
     serial::print("Interrupts enabled\r\n");
+
+    launch_program();
 
     WindowManager manager(params->fb, DESKTOP_BG, kservices.allocator);
     kservices.window_manager = &manager;

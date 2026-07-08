@@ -1,5 +1,6 @@
 #pragma once
 #include <stdint.h>
+#include <stddef.h>
 
 struct Dimensions {
     uint32_t width;
@@ -23,4 +24,6 @@ void serial_puts(const char* s);
 void serial_puthex(uint64_t val);
 void serial_putdec(uint64_t val);
 
+extern "C" void* memcpy(void* dest, const void* src, size_t n);
+extern "C" void* memset(void* dst, int c, size_t n);
 }

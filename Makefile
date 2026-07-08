@@ -19,6 +19,9 @@ EFI_CFLAGS = -Ignu-efi/inc -Iinclude -Ignu-efi/inc/x86_64 -Ignu-efi/inc/protocol
 KERN_CFLAGS = -Iinclude -ffreestanding -fno-stack-protector -mno-red-zone \
               -mno-avx -mno-sse -O2 -Wall
 
+BIN_CFLAGS = -Iinclude -ffreestanding -fno-stack-protector -mno-red-zone \
+              -mno-avx -mno-sse -O2 -Wall
+
 .PHONY: build run clean
 
 build: esp/EFI/BOOT/BOOTX64.EFI esp/kernel.bin
@@ -34,6 +37,9 @@ esp/EFI/BOOT/BOOTX64.EFI: boot.o | esp/EFI/BOOT
 esp/EFI/BOOT:
 	mkdir -p esp/EFI/BOOT
 
+hello.o: src/bin/hello.cpp
+	$(CC_KERN) $(BIN_CFLAGS) -c $< -o $@
+
 kernel.o: src/kernel.cpp
 	$(CC_KERN) $(KERN_CFLAGS) -c $< -o $@
 
@@ -43,11 +49,23 @@ util.o: src/util.cpp
 isr.o: src/isr.s
 	nasm -f elf64 $< -o $@
 
-kernel.elf: kernel.o util.o isr.o font_psf.o kernel.ld
-	$(LD_KERN) -T kernel.ld -o $@ kernel.o util.o isr.o font_psf.o
+hello.elf: hello.o bin.ld
+	$(LD_KERN) -T bin.ld -o $@ hello.o
+
+kernel.elf: kernel.o util.o isr.o font_psf.o hello_elf.o kernel.ld
+	$(LD_KERN) -T kernel.ld -o $@ kernel.o util.o isr.o font_psf.o hello_elf.o
 
 font_psf.o: font.psf
-	x86_64-elf-objcopy -O elf64-x86-64 -B i386 -I binary font.psf font_psf.o
+	$(OC_KERN) -O elf64-x86-64 -B i386 -I binary font.psf font_psf.o
+
+hello_elf.o: hello.elf
+	$(OC_KERN) -O elf64-x86-64 -B i386 -I binary hello.elf hello_elf.o
+
+hello.bin: hello.elf
+	$(OC_KERN) -O binary $< $@
+
+hello_bin.o: hello.bin
+	$(OC_KERN) -O elf64-x86-64 -B i386 -I binary hello.bin hello_bin.o
 
 kernel.bin: kernel.elf
 	$(OC_KERN) -O binary $< $@
