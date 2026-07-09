@@ -115,7 +115,7 @@ inline void select_lba(uint32_t lba) {
     util::io_wait();
 }
 
-inline void write_sector(uint32_t lba, uint16_t* buffer) {
+inline void write_sector(uint32_t lba, uint8_t* buffer) {
     util::outb(ATA_PRIMARY_SECTOR_COUNT_PORT, 1);
     util::outb(ATA_PRIMARY_SECTOR_NUMBER_PORT, (uint8_t)(lba & 0xFF));
     util::outb(ATA_PRIMARY_CYLINDER_LOW_PORT, (uint8_t)((lba >> 8) & 0xFF));
@@ -131,7 +131,8 @@ inline void write_sector(uint32_t lba, uint16_t* buffer) {
     }
 
     for (int i = 0; i < BYTES_PER_SECTOR / 2; i++) {
-        util::outw(ATA_PRIMARY_DATA_PORT, buffer[i]);
+        uint16_t word = buffer[i * 2] | (buffer[i * 2 + 1] << 8);
+        util::outw(ATA_PRIMARY_DATA_PORT, word);
     }
 
     util::outb(ATA_PRIMARY_COMMAND_PORT, CACHE_FLUSH_COMMAND);
@@ -141,7 +142,7 @@ inline void write_sector(uint32_t lba, uint16_t* buffer) {
     }
 }
 
-inline void read_sector(uint32_t lba, uint16_t* buffer) {
+inline void read_sector(uint32_t lba, uint8_t* buffer) {
     util::outb(ATA_PRIMARY_SECTOR_COUNT_PORT, 1);
     util::outb(ATA_PRIMARY_SECTOR_NUMBER_PORT, (uint8_t)(lba & 0xFF));
     util::outb(ATA_PRIMARY_CYLINDER_LOW_PORT, (uint8_t)((lba >> 8) & 0xFF));
@@ -157,7 +158,9 @@ inline void read_sector(uint32_t lba, uint16_t* buffer) {
     }
 
     for (int i = 0; i < BYTES_PER_SECTOR / 2; i++) {
-        buffer[i] = util::inw(ATA_PRIMARY_DATA_PORT);
+        uint16_t word = util::inw(ATA_PRIMARY_DATA_PORT);
+        buffer[i * 2]     = (uint8_t)(word & 0xFF);
+        buffer[i * 2 + 1] = (uint8_t)(word >> 8);
     }
 }
 

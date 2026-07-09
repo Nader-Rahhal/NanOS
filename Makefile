@@ -75,6 +75,7 @@ esp/kernel.bin: kernel.bin
 
 ata_disk.img:
 	qemu-img create -f raw $@ 16M
+	mkfs.ext2 -F -b 1024 ata_disk.img
 
 run: ata_disk.img
 	qemu-system-x86_64 -m 4096 -bios RELEASEX64_OVMF.fd \

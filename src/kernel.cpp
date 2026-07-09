@@ -15,6 +15,7 @@
 #include "arch/exception.h"
 #include "drivers/serial.h"
 #include "drivers/ata.h"
+#include "fs/ext2.h"
 
 extern "C" { extern uint8_t _binary_font_psf_start[]; }
 
@@ -66,19 +67,19 @@ struct KernelParams {
 void test_ata() {
     ata::init();
 
-    uint16_t ata_write_buf[BYTES_PER_SECTOR / 2];
-    for (int i = 0; i < BYTES_PER_SECTOR / 2; i++) {
-        ata_write_buf[i] = (uint16_t)i;
+    uint8_t ata_write_buf[BYTES_PER_SECTOR];
+    for (int i = 0; i < BYTES_PER_SECTOR; i++) {
+        ata_write_buf[i] = (uint8_t)i;
     }
 
     // LBA 1 to avoid clobbering a boot sector at LBA 0.
     ata::write_sector(1, ata_write_buf);
 
-    uint16_t ata_read_buf[BYTES_PER_SECTOR / 2];
+    uint8_t ata_read_buf[BYTES_PER_SECTOR];
     ata::read_sector(1, ata_read_buf);
 
     bool ata_ok = true;
-    for (int i = 0; i < BYTES_PER_SECTOR / 2; i++) {
+    for (int i = 0; i < BYTES_PER_SECTOR; i++) {
         if (ata_read_buf[i] != ata_write_buf[i]) {
             ata_ok = false;
             break;
@@ -182,6 +183,9 @@ extern "C" __attribute__((section(".text.kmain"))) void kmain(struct KernelParam
     serial::print("Interrupts enabled\r\n");
 
     launch_program();
+
+    fs::ext2::parse_superblock();
+    fs::ext2::get_inode(2);
 
     WindowManager manager(params->fb, DESKTOP_BG, kservices.allocator);
     kservices.window_manager = &manager;
