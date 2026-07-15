@@ -4,11 +4,13 @@
 #include "graphics/framebuffer.h"
 #include "memory/mmap.h"
 #include "acpi/acpi.h"
+#include "kstate.h"
 
 struct KernelParams {
     FrameBuffer* fb;
     MMap* mm;
-    MADT* madt;
+    acpi::MADT* madt;
+    kernel_state* kstate;
 };
 
 #define KERNEL_LOAD_ADDR 0x100000ULL
@@ -99,7 +101,7 @@ struct __attribute__((packed)) RSDP {
 };
 
 struct __attribute__((packed)) XSDT {
-    ACPISDTHeader sdtHeader;
+    acpi::ACPISDTHeader sdtHeader;
     uint64_t sdtAddresses[];
 };
 
@@ -181,14 +183,14 @@ extern "C" EFI_STATUS efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemT
     
     // now we have a structure that holds all the ACPI table descriptors
     XSDT* Xsdt = (XSDT*)(UINTN)Rsdp->XsdtAddress;
-    UINTN NumTableDescriptors = (Xsdt->sdtHeader.Length - sizeof(ACPISDTHeader)) / 8;
-    MADT *madt = NULL;
-    
+    UINTN NumTableDescriptors = (Xsdt->sdtHeader.Length - sizeof(acpi::ACPISDTHeader)) / 8;
+    acpi::MADT *madt = NULL;
+
     for (UINTN i = 0; i < NumTableDescriptors; i++) {
-        ACPISDTHeader *header = (ACPISDTHeader *)(UINTN)Xsdt->sdtAddresses[i];
+        acpi::ACPISDTHeader *header = (acpi::ACPISDTHeader *)(UINTN)Xsdt->sdtAddresses[i];
         if (header->Signature[0] == 'A' && header->Signature[1] == 'P' &&
             header->Signature[2] == 'I' && header->Signature[3] == 'C') {
-            madt = (MADT *)header;
+            madt = (acpi::MADT *)header;
             break;
         }
     }
@@ -203,6 +205,16 @@ extern "C" EFI_STATUS efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemT
         if (EFI_ERROR(Status))
             return Status;
     }
+
+    struct kernel_state kstate;
+
+    kstate.current_working_dir = "/";
+    kstate.timezone = "CT";
+    kstate.kernel_name = "NanOS";
+    kstate.kernel_version_major = "0";
+    kstate.kernel_version_minor = "1";
+    kstate.font_type = "default";
+
 
     struct KernelParams params;
     params.fb = &fb;

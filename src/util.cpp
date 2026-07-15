@@ -8,6 +8,21 @@ uint32_t strlen(const char* s) {
     return n;
 }
 
+bool strcmp(const char* s1, const char* s2){
+    uint32_t len1 = strlen(s1);
+    uint32_t len2 = strlen(s2);
+
+    if (len1 != len2) return false;
+
+    uint32_t idx = 0;
+
+    while (idx < len1){
+        if (s1[idx] != s2[idx]) return false;
+        idx++;
+    }
+    return true;
+}
+
 void u64_to_str(uint64_t n, char* buf) {
     if (n == 0) { buf[0] = '0'; buf[1] = '\0'; return; }
     char tmp[20];

@@ -1,39 +1,45 @@
 #pragma once
 #include <stdint.h>
 
-namespace serial {
+#define SERIAL_COM1 0x3F8
 
-inline uint8_t inb(uint16_t port) {
+namespace drivers::serial::detail {
+
+uint8_t inb(uint16_t port) {
     uint8_t val;
     __asm__ volatile ("inb %1, %0" : "=a"(val) : "Nd"(port));
     return val;
 }
 
-inline void outb(uint16_t port, uint8_t val) {
+void outb(uint16_t port, uint8_t val) {
     __asm__ volatile ("outb %0, %1" :: "a"(val), "Nd"(port));
 }
 
-inline void print_char(char c) {
-    while (!(inb(0x3F8 + 5) & 0x20));
-    outb(0x3F8, c);
+void print_char(char c) {
+    while (!(inb(SERIAL_COM1 + 5) & 0x20));
+    outb(SERIAL_COM1, c);
 }
 
-inline void init() {
-    outb(0x3F8 + 1, 0x00);
-    outb(0x3F8 + 3, 0x80);
-    outb(0x3F8 + 0, 0x01);
-    outb(0x3F8 + 1, 0x00);
-    outb(0x3F8 + 3, 0x03);
-    outb(0x3F8 + 2, 0xC7);
 }
 
-inline void print(const char* s) {
-    while (*s) print_char(*s++);
+namespace drivers::serial {
+
+void init() {
+    detail::outb(SERIAL_COM1 + 1, 0x00);   // disable interrupts
+    detail::outb(SERIAL_COM1 + 3, 0x80);   // DLAB on
+    detail::outb(SERIAL_COM1 + 0, 0x01);   // divisor low: 115200 baud
+    detail::outb(SERIAL_COM1 + 1, 0x00);   // divisor high
+    detail::outb(SERIAL_COM1 + 3, 0x03);   // 8N1, DLAB off
+    detail::outb(SERIAL_COM1 + 2, 0xC7);   // FIFO on, clear, 14-byte threshold
 }
 
-inline void print(uint64_t val) {
+void print(const char* s) {
+    while (*s) detail::print_char(*s++);
+}
+
+void print(uint64_t val) {
     if (val == 0) {
-        print_char('0');
+        detail::print_char('0');
         return;
     }
     char buf[20];
@@ -42,7 +48,7 @@ inline void print(uint64_t val) {
         buf[i++] = '0' + (val % 10);
         val /= 10;
     }
-    while (i-- > 0) print_char(buf[i]);
+    while (i-- > 0) detail::print_char(buf[i]);
 }
 
 }

@@ -1,6 +1,8 @@
 #pragma once
 #include <stdint.h>
 
+namespace acpi {
+
 struct __attribute__((packed)) ACPISDTHeader {
     char     Signature[4];
     uint32_t Length;
@@ -23,3 +25,5 @@ struct ICHeader {
     uint8_t Type;
     uint8_t Length;
 };
+
+}

@@ -1,6 +1,6 @@
 #pragma once
 #include <stdint.h>
-#include <cstddef>
+#include <stddef.h>
 
 #include "pmm.h"
 #include "drivers/serial.h"
@@ -17,7 +17,7 @@ public:
         if (status == PMM_STATUS::ALLOC_SUCCESS) {
             return (void*)addr_out;
         } else {
-            serial::print("Failed to allocate memory\n");
+            drivers::serial::print("Failed to allocate memory\n");
             return nullptr;
         }
     }
@@ -27,7 +27,7 @@ public:
         uint64_t addr = (uint64_t)ptr;
         PMM_STATUS status = pmm.dealloc_pages(addr, count);
         if (status != PMM_STATUS::DEALLOC_SUCCESS) {
-            serial::print("Failed to deallocate memory\n");
+            drivers::serial::print("Failed to deallocate memory\n");
         }
     }
 private:

@@ -10,8 +10,10 @@
 #define GDT_OFFSET_USER_DATA   0x20
 #define GDT_OFFSET_TSS         0x28
 
-// this holds the address to the GDT
-// this is loaded using the LGDT instr, whose arg is a pointer to the GDTR
+namespace arch::gdt {
+
+namespace detail {
+
 struct __attribute__((packed)) GDTR {
     uint16_t size; // size of GDT
     uint64_t offset; // linear address of GDT
@@ -46,8 +48,8 @@ struct __attribute__((packed)) GDT {
     SystemSegmentDescriptor tss_descriptor;
 };
 
-struct SegmentDescriptor create_descriptor(uint8_t access, uint8_t limit_flags){
-    struct SegmentDescriptor segment;
+inline SegmentDescriptor create_descriptor(uint8_t access, uint8_t limit_flags){
+    SegmentDescriptor segment;
     segment.limit_low = 0xFFFF;
     segment.base_low = 0x0000;
     segment.base_mid = 0x00;
@@ -57,8 +59,8 @@ struct SegmentDescriptor create_descriptor(uint8_t access, uint8_t limit_flags){
     return segment;
 }
 
-struct SystemSegmentDescriptor create_system_descriptor(uint64_t base, uint32_t limit, uint8_t access) {
-    struct SystemSegmentDescriptor desc;
+inline SystemSegmentDescriptor create_system_descriptor(uint64_t base, uint32_t limit, uint8_t access) {
+    SystemSegmentDescriptor desc;
     desc.limit_low   = limit & 0xFFFF;
     desc.base_low    = (base >>  0) & 0xFFFF;
     desc.base_mid    = (base >> 16) & 0xFF;
@@ -70,7 +72,7 @@ struct SystemSegmentDescriptor create_system_descriptor(uint64_t base, uint32_t 
     return desc;
 }
 
-void load_gdt(GDTR* gdtr) {
+inline void load_gdt(GDTR* gdtr) {
     __asm__ volatile (
         "lgdt %0\n"
         "push $0x08\n"
@@ -90,21 +92,25 @@ void load_gdt(GDTR* gdtr) {
     );
 }
 
-inline void gdt_init() {
-    static struct GDT gdt;
-    static struct TSS tss;
+} // namespace detail
 
-    gdt.null_descriptor        = create_descriptor(0x00, 0x00);
-    gdt.kernel_code_descriptor = create_descriptor(0x9A, 0xAF);
-    gdt.kernel_data_descriptor = create_descriptor(0x92, 0xCF);
-    gdt.user_code_descriptor   = create_descriptor(0xFA, 0xAF);
-    gdt.user_data_descriptor   = create_descriptor(0xF2, 0xCF);
-    gdt.tss_descriptor         = create_system_descriptor((uint64_t)&tss, sizeof(tss) - 1, 0x89);
+inline void init() {
+    static detail::GDT gdt;
+    static arch::tss::TSS tss;
 
-    struct GDTR gdtr;
+    gdt.null_descriptor        = detail::create_descriptor(0x00, 0x00);
+    gdt.kernel_code_descriptor = detail::create_descriptor(0x9A, 0xAF);
+    gdt.kernel_data_descriptor = detail::create_descriptor(0x92, 0xCF);
+    gdt.user_code_descriptor   = detail::create_descriptor(0xFA, 0xAF);
+    gdt.user_data_descriptor   = detail::create_descriptor(0xF2, 0xCF);
+    gdt.tss_descriptor         = detail::create_system_descriptor((uint64_t)&tss, sizeof(tss) - 1, 0x89);
+
+    detail::GDTR gdtr;
     gdtr.size   = sizeof(gdt) - 1;
     gdtr.offset = (uint64_t)&gdt;
-    load_gdt(&gdtr);
+    detail::load_gdt(&gdtr);
 
     __asm__ volatile ("ltr %0" :: "r"((uint16_t)GDT_OFFSET_TSS));
 }
+
+} // namespace arch::gdt
