@@ -1,5 +1,7 @@
 #pragma once
 
+namespace arch::tss {
+
 struct __attribute__((packed)) TSS {
     uint32_t reserved0;       // 0x00
     uint64_t rsp0;            // 0x04
@@ -19,3 +21,5 @@ struct __attribute__((packed)) TSS {
     uint16_t reserved5;       // 0x64
     uint16_t iopb_offset;     // 0x66
 };
+
+}

@@ -2,6 +2,7 @@
 #include "idt.h"
 #include "panic.h"
 
+namespace arch::exception::detail {
 
 enum class ExceptionResult {
     PANIC,
@@ -19,77 +20,77 @@ static const char* exception_names[] = {
     "Hypervisor Injection","VMM Communication",    "Security",              "Reserved",
 };
 
-ExceptionResult handle_divide_error(InterruptFrame* frame) {
+ExceptionResult handle_divide_error(arch::idt::InterruptFrame* frame) {
     return ExceptionResult::PANIC;
 }
-ExceptionResult handle_debug(InterruptFrame* frame) {
+ExceptionResult handle_debug(arch::idt::InterruptFrame* frame) {
     return ExceptionResult::PANIC;
 }
-ExceptionResult handle_nmi(InterruptFrame* frame) {
+ExceptionResult handle_nmi(arch::idt::InterruptFrame* frame) {
     return ExceptionResult::PANIC;
 }
-ExceptionResult handle_breakpoint(InterruptFrame* frame) {
+ExceptionResult handle_breakpoint(arch::idt::InterruptFrame* frame) {
     return ExceptionResult::PANIC;
 }
-ExceptionResult handle_overflow(InterruptFrame* frame) {
+ExceptionResult handle_overflow(arch::idt::InterruptFrame* frame) {
     return ExceptionResult::PANIC;
 }
-ExceptionResult handle_bound_range(InterruptFrame* frame) {
+ExceptionResult handle_bound_range(arch::idt::InterruptFrame* frame) {
     return ExceptionResult::PANIC;
 }
-ExceptionResult handle_invalid_opcode(InterruptFrame* frame) {
+ExceptionResult handle_invalid_opcode(arch::idt::InterruptFrame* frame) {
     return ExceptionResult::PANIC;
 }
-ExceptionResult handle_device_not_available(InterruptFrame* frame) {
+ExceptionResult handle_device_not_available(arch::idt::InterruptFrame* frame) {
     return ExceptionResult::PANIC;
 }
-ExceptionResult handle_double_fault(InterruptFrame* frame) {
+ExceptionResult handle_double_fault(arch::idt::InterruptFrame* frame) {
     return ExceptionResult::PANIC;
 }
-ExceptionResult handle_invalid_tss(InterruptFrame* frame) {
+ExceptionResult handle_invalid_tss(arch::idt::InterruptFrame* frame) {
     return ExceptionResult::PANIC;
 }
-ExceptionResult handle_segment_not_present(InterruptFrame* frame) {
+ExceptionResult handle_segment_not_present(arch::idt::InterruptFrame* frame) {
     return ExceptionResult::PANIC;
 }
-ExceptionResult handle_stack_fault(InterruptFrame* frame) {
+ExceptionResult handle_stack_fault(arch::idt::InterruptFrame* frame) {
     return ExceptionResult::PANIC;
 }
-ExceptionResult handle_general_protection(InterruptFrame* frame) {
+ExceptionResult handle_general_protection(arch::idt::InterruptFrame* frame) {
     return ExceptionResult::PANIC;
 }
-ExceptionResult handle_page_fault(InterruptFrame* frame) {
+ExceptionResult handle_page_fault(arch::idt::InterruptFrame* frame) {
     return ExceptionResult::PANIC;
 }
-ExceptionResult handle_x87_fp_error(InterruptFrame* frame) {
+ExceptionResult handle_x87_fp_error(arch::idt::InterruptFrame* frame) {
     return ExceptionResult::PANIC;
 }
-ExceptionResult handle_alignment_check(InterruptFrame* frame) {
+ExceptionResult handle_alignment_check(arch::idt::InterruptFrame* frame) {
     return ExceptionResult::PANIC;
 }
-ExceptionResult handle_machine_check(InterruptFrame* frame) {
+ExceptionResult handle_machine_check(arch::idt::InterruptFrame* frame) {
     return ExceptionResult::PANIC;
 }
-ExceptionResult handle_simd_fp_error(InterruptFrame* frame) {
+ExceptionResult handle_simd_fp_error(arch::idt::InterruptFrame* frame) {
     return ExceptionResult::PANIC;
 }
-ExceptionResult handle_virtualization(InterruptFrame* frame) {
+ExceptionResult handle_virtualization(arch::idt::InterruptFrame* frame) {
     return ExceptionResult::PANIC;
 }
-ExceptionResult handle_control_protection(InterruptFrame* frame) {
+ExceptionResult handle_control_protection(arch::idt::InterruptFrame* frame) {
     return ExceptionResult::PANIC;
 }
-ExceptionResult handle_hypervisor_injection(InterruptFrame* frame) {
+ExceptionResult handle_hypervisor_injection(arch::idt::InterruptFrame* frame) {
     return ExceptionResult::PANIC;
 }
-ExceptionResult handle_vmm_communication(InterruptFrame* frame) {
+ExceptionResult handle_vmm_communication(arch::idt::InterruptFrame* frame) {
     return ExceptionResult::PANIC;
 }
-ExceptionResult handle_security(InterruptFrame* frame) {
+ExceptionResult handle_security(arch::idt::InterruptFrame* frame) {
     return ExceptionResult::PANIC;
 }
 
-ExceptionResult handle_exception(InterruptFrame* frame) {
+ExceptionResult handle_exception(arch::idt::InterruptFrame* frame) {
     switch (frame->vector) {
         case 0:  return handle_divide_error(frame);
         case 1:  return handle_debug(frame);
@@ -117,13 +118,12 @@ ExceptionResult handle_exception(InterruptFrame* frame) {
         default: return ExceptionResult::PANIC;
     }
 }
-
-void divide_by_zero_exception_test(){
-    __asm__ volatile ("xor %%ecx, %%ecx; div %%ecx" ::: "eax", "edx", "ecx");
 }
 
-inline void exception_handler(InterruptFrame* frame) {
-    ExceptionResult result = handle_exception(frame);
-    if (result == ExceptionResult::PANIC)
-        KPANIC(exception_names[frame->vector]);
+namespace arch::exception {
+void exception_handler(arch::idt::InterruptFrame* frame) {
+    detail::ExceptionResult result = detail::handle_exception(frame);
+    if (result == detail::ExceptionResult::PANIC)
+        KPANIC(detail::exception_names[frame->vector]);
+}
 }

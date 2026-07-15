@@ -10,14 +10,16 @@ struct Dimensions {
 namespace util {
 
 uint32_t strlen(const char* s);
-void     u64_to_str(uint64_t n, char* buf);
-void     u64_to_hex(uint64_t val, char* buf);
+bool strcmp(const char* s1, const char* s2);
 
-void    outb(uint16_t port, uint8_t val);
+void u64_to_str(uint64_t n, char* buf);
+void u64_to_hex(uint64_t val, char* buf);
+
+void outb(uint16_t port, uint8_t val);
 uint8_t inb(uint16_t port);
 uint16_t inw(uint16_t port);
 void outw(uint16_t port, uint16_t val);
-void    io_wait();
+void io_wait();
 
 void serial_putc(char c);
 void serial_puts(const char* s);

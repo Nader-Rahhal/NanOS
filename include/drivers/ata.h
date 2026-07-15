@@ -28,13 +28,11 @@
 
 #define BYTES_PER_SECTOR 512
 
-namespace ata {
+namespace ata::detail {
 
-inline uint16_t identify_data[256];
+uint16_t identify_data[256];
 
-// Waits for BSY to clear and DRQ to set — use for commands that transfer data
-// (IDENTIFY, READ SECTORS, WRITE SECTORS).
-inline bool poll_data_ready() {
+bool poll_data_ready() {
     uint8_t status = util::inb(ATA_PRIMARY_STATUS_PORT);
 
     while (status & 0x80) { // BSY
@@ -42,22 +40,21 @@ inline bool poll_data_ready() {
     }
 
     if (status & 0x01) { // ERR
-        uint8_t err = util::inb(ATA_PRIMARY_ERROR_PORT);
-        serial::print("ATA error during poll\n");
+        uint8_t err = util::inb(ATA_PRIMARY_ERROR_PORT); // read clears the error state
+        (void)err;
+        drivers::serial::print("ATA error during poll\n");
         return false;
     }
 
     if (!(status & 0x08)) { // DRQ
-        serial::print("ATA device not ready\n");
+        drivers::serial::print("ATA device not ready\n");
         return false;
     }
 
     return true;
 }
 
-// Waits for BSY to clear only — use for commands with no data phase
-// (FLUSH CACHE, etc). Does NOT check DRQ.
-inline bool poll_command_complete() {
+bool poll_command_complete() {
     uint8_t status = util::inb(ATA_PRIMARY_STATUS_PORT);
 
     while (status & 0x80) { // BSY
@@ -65,15 +62,28 @@ inline bool poll_command_complete() {
     }
 
     if (status & 0x01) { // ERR
-        uint8_t err = util::inb(ATA_PRIMARY_ERROR_PORT);
-        serial::print("ATA error during poll\n");
+        uint8_t err = util::inb(ATA_PRIMARY_ERROR_PORT); // read clears the error state
+        (void)err;
+        drivers::serial::print("ATA error during poll\n");
         return false;
     }
 
     return true;
 }
 
-inline void init() {
+void select_lba(uint32_t lba) {
+    util::outb(ATA_PRIMARY_DRIVE_HEAD_PORT, 0xE0 | ((lba >> 24) & 0x0F)); // LBA mode
+    util::io_wait();
+    util::io_wait();
+    util::io_wait();
+    util::io_wait();
+}
+
+}
+
+namespace ata {
+
+void init() {
     util::outb(ATA_PRIMARY_DRIVE_HEAD_PORT, 0xA0);
 
     util::io_wait();
@@ -83,7 +93,7 @@ inline void init() {
 
     uint8_t status = util::inb(ATA_PRIMARY_STATUS_PORT);
     if (status == 0xFF) {
-        serial::print("No ATA device found (floating bus)\n");
+        drivers::serial::print("No ATA device found (floating bus)\n");
         return;
     }
 
@@ -91,42 +101,56 @@ inline void init() {
     status = util::inb(ATA_PRIMARY_STATUS_PORT);
 
     if (status == 0) {
-        serial::print("No ATA device found\n");
+        drivers::serial::print("No ATA device found\n");
         return;
     }
 
-    if (!poll_data_ready()) {
-        serial::print("ATA IDENTIFY failed\n");
+    if (!detail::poll_data_ready()) {
+        drivers::serial::print("ATA IDENTIFY failed\n");
         return;
     }
 
     for (int i = 0; i < BYTES_PER_SECTOR / 2; i++) {
-        identify_data[i] = util::inw(ATA_PRIMARY_DATA_PORT);
+        detail::identify_data[i] = util::inw(ATA_PRIMARY_DATA_PORT);
     }
 
-    serial::print("ATA device initialized\n");
+    drivers::serial::print("ATA device initialized\n");
 }
 
-inline void select_lba(uint32_t lba) {
-    util::outb(ATA_PRIMARY_DRIVE_HEAD_PORT, 0xE0 | ((lba >> 24) & 0x0F)); // LBA mode
-    util::io_wait();
-    util::io_wait();
-    util::io_wait();
-    util::io_wait();
-}
-
-inline void write_sector(uint32_t lba, uint8_t* buffer) {
+void read_sector(uint32_t lba, uint8_t* buffer) {
     util::outb(ATA_PRIMARY_SECTOR_COUNT_PORT, 1);
     util::outb(ATA_PRIMARY_SECTOR_NUMBER_PORT, (uint8_t)(lba & 0xFF));
     util::outb(ATA_PRIMARY_CYLINDER_LOW_PORT, (uint8_t)((lba >> 8) & 0xFF));
     util::outb(ATA_PRIMARY_CYLINDER_HIGH_PORT, (uint8_t)((lba >> 16) & 0xFF));
 
-    select_lba(lba);
+    detail::select_lba(lba);
+
+    util::outb(ATA_PRIMARY_COMMAND_PORT, READ_SECTORS_COMMAND);
+
+    if (!detail::poll_data_ready()) {
+        drivers::serial::print("ATA read failed\n");
+        return;
+    }
+
+    for (int i = 0; i < BYTES_PER_SECTOR / 2; i++) {
+        uint16_t word = util::inw(ATA_PRIMARY_DATA_PORT);
+        buffer[i * 2]     = (uint8_t)(word & 0xFF);
+        buffer[i * 2 + 1] = (uint8_t)(word >> 8);
+    }
+}
+
+void write_sector(uint32_t lba, uint8_t* buffer) {
+    util::outb(ATA_PRIMARY_SECTOR_COUNT_PORT, 1);
+    util::outb(ATA_PRIMARY_SECTOR_NUMBER_PORT, (uint8_t)(lba & 0xFF));
+    util::outb(ATA_PRIMARY_CYLINDER_LOW_PORT, (uint8_t)((lba >> 8) & 0xFF));
+    util::outb(ATA_PRIMARY_CYLINDER_HIGH_PORT, (uint8_t)((lba >> 16) & 0xFF));
+
+    detail::select_lba(lba);
 
     util::outb(ATA_PRIMARY_COMMAND_PORT, WRITE_SECTORS_COMMAND);
 
-    if (!poll_data_ready()) {
-        serial::print("ATA write failed\n");
+    if (!detail::poll_data_ready()) {
+        drivers::serial::print("ATA write failed\n");
         return;
     }
 
@@ -136,31 +160,9 @@ inline void write_sector(uint32_t lba, uint8_t* buffer) {
     }
 
     util::outb(ATA_PRIMARY_COMMAND_PORT, CACHE_FLUSH_COMMAND);
-    if (!poll_command_complete()) {
-        serial::print("ATA cache flush failed\n");
+    if (!detail::poll_command_complete()) {
+        drivers::serial::print("ATA cache flush failed\n");
         return;
-    }
-}
-
-inline void read_sector(uint32_t lba, uint8_t* buffer) {
-    util::outb(ATA_PRIMARY_SECTOR_COUNT_PORT, 1);
-    util::outb(ATA_PRIMARY_SECTOR_NUMBER_PORT, (uint8_t)(lba & 0xFF));
-    util::outb(ATA_PRIMARY_CYLINDER_LOW_PORT, (uint8_t)((lba >> 8) & 0xFF));
-    util::outb(ATA_PRIMARY_CYLINDER_HIGH_PORT, (uint8_t)((lba >> 16) & 0xFF));
-
-    select_lba(lba);
-
-    util::outb(ATA_PRIMARY_COMMAND_PORT, READ_SECTORS_COMMAND);
-
-    if (!poll_data_ready()) {
-        serial::print("ATA read failed\n");
-        return;
-    }
-
-    for (int i = 0; i < BYTES_PER_SECTOR / 2; i++) {
-        uint16_t word = util::inw(ATA_PRIMARY_DATA_PORT);
-        buffer[i * 2]     = (uint8_t)(word & 0xFF);
-        buffer[i * 2 + 1] = (uint8_t)(word >> 8);
     }
 }
 

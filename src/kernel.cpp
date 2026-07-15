@@ -17,29 +17,27 @@
 #include "drivers/ata.h"
 #include "fs/ext2.h"
 
-extern "C" { extern uint8_t _binary_font_psf_start[]; }
+#include "kapi.h"
+#include "kstate.h"
 
-extern "C" uint8_t _binary_hello_elf_size[];
-extern "C" { extern uint8_t _binary_hello_elf_start[]; }
-extern "C" { extern uint8_t _binary_hello_elf_end[]; }
+extern "C" { extern uint8_t _binary_fonts_default_psf_start[]; }
+
 
 struct KernelServices {
     PhysicalMemoryAllocator* allocator;
     WindowManager* window_manager;
 };
 
-
-
 struct KernelServices kservices;
 
-extern "C" void interrupt_handler(InterruptFrame* frame) {
+extern "C" void interrupt_handler(arch::idt::InterruptFrame* frame) {
     if (frame->vector < 32) {
-        exception_handler(frame);
+        arch::exception::exception_handler(frame);
         return;
     }
 
     if (frame->vector == 255) {
-        // LAPIC spurious interrupt — do NOT send EOI
+        // LAPIC spurious interrupt do not send EOI
         return;
     }
 
@@ -53,139 +51,67 @@ extern "C" void interrupt_handler(InterruptFrame* frame) {
             kservices.window_manager->redraw_mouse();
     }
 
-    lapic_eoi();
+    arch::apic::lapic_eoi();
 }
 
 struct KernelParams {
     FrameBuffer* fb;
     MMap* mm;
-    MADT* madt;
+    acpi::MADT* madt;
+    kernel_state* kstate;
 };
 
 #define DESKTOP_BG Color::DARK_SLATE_GRAY
 
-void test_ata() {
-    ata::init();
+#define MAX_PROGRAM_SIZE (64 * 1024)
 
-    uint8_t ata_write_buf[BYTES_PER_SECTOR];
-    for (int i = 0; i < BYTES_PER_SECTOR; i++) {
-        ata_write_buf[i] = (uint8_t)i;
-    }
+uint8_t elf_buf[MAX_PROGRAM_SIZE];
 
-    // LBA 1 to avoid clobbering a boot sector at LBA 0.
-    ata::write_sector(1, ata_write_buf);
+struct kernel_api g_kapi = {
+    .puts = util::serial_puts,
+    .touch = fs::ext2::create_file,
+};
 
-    uint8_t ata_read_buf[BYTES_PER_SECTOR];
-    ata::read_sector(1, ata_read_buf);
+void try_exec(int argc, char** argv){
+    (void)argc;
+    const char* fname = argv[0];
 
-    bool ata_ok = true;
-    for (int i = 0; i < BYTES_PER_SECTOR; i++) {
-        if (ata_read_buf[i] != ata_write_buf[i]) {
-            ata_ok = false;
-            break;
-        }
-    }
-    serial::print(ata_ok ? "ATA read/write test passed\r\n" : "ATA read/write test FAILED\r\n");
-}
+    fs::ext2::read_file(fname, elf_buf, MAX_PROGRAM_SIZE);
+    
+    uint64_t entry = elf::load(elf_buf);
 
-void test_allocator(PhysicalMemoryAllocator& allocator) {
-    void* a = allocator.malloc(PAGE_SIZE);
-    serial::print("malloc(PAGE_SIZE) a = ");
-    serial::print((uint64_t)a);
-    serial::print(a != nullptr ? " (ok)\r\n" : " (FAIL)\r\n");
-
-    void* b = allocator.malloc(4 * PAGE_SIZE);
-    serial::print("malloc(4 * PAGE_SIZE) b = ");
-    serial::print((uint64_t)b);
-    serial::print(b != nullptr ? " (ok)\r\n" : " (FAIL)\r\n");
-
-    allocator.free(a, PAGE_SIZE);
-    void* c = allocator.malloc(PAGE_SIZE);
-    serial::print("malloc after free c = ");
-    serial::print((uint64_t)c);
-    serial::print(c == a ? " (matches freed block, ok)\r\n" : " (mismatch)\r\n");
-
-    allocator.free(b, 4 * PAGE_SIZE);
-    allocator.free(c, PAGE_SIZE);
-}
-
-#define PROGRAM_SLOT 0x800000
-
-void launch_program(){
-    size_t hello_size = (size_t)&_binary_hello_elf_size;
-
-    struct ELF_HEADER efi_hdr;
-    util::memcpy(&efi_hdr, _binary_hello_elf_start, sizeof(ELF_HEADER));    
-
-    util::serial_puts("ELF Header:\r\n");
-    util::serial_puts("Magic: ");
-    util::serial_puthex(efi_hdr.magic);
-    util::serial_puts("\r\nEntry point: ");
-    util::serial_putdec(efi_hdr.entry_point);
-    util::serial_puts("\r\nProgram header offset: ");
-    util::serial_putdec(efi_hdr.ph_offset);
-    util::serial_puts("\r\nSection header offset: ");
-    util::serial_putdec(efi_hdr.sh_offset);
-    util::serial_puts("\r\nNumber of program headers: ");
-    util::serial_putdec(efi_hdr.ph_entry_count);
-    util::serial_puts("\r\nNumber of section headers: ");
-    util::serial_putdec(efi_hdr.sh_entry_count);
-    util::serial_puts("\r\n");
-
-    struct ELF_PROGRAM_HEADER phdr_entries[efi_hdr.ph_entry_count];
-    util::memcpy(&phdr_entries, _binary_hello_elf_start + efi_hdr.ph_offset, efi_hdr.ph_entry_count * sizeof(ELF_PROGRAM_HEADER));
-
-    for (uint16_t i = 0; i < efi_hdr.ph_entry_count; i++) {
-        struct ELF_PROGRAM_HEADER& phdr = phdr_entries[i];
-        if (phdr.type != 1) {
-            util::serial_puts("Skipping non-loadable program header ");
-            util::serial_putdec(i);
-            util::serial_puts("\r\n");
-            continue;
-        }
-
-        util::memcpy((void*)phdr.vaddr, _binary_hello_elf_start + phdr.offset, phdr.file_size);
-    }
-
-    typedef void (*program_entry_t)();
-    program_entry_t entry = (program_entry_t)efi_hdr.entry_point;
-    entry();
+    typedef void (*program_entry_t)(int argc, char** argv, kernel_api* kapi);
+    ((program_entry_t)entry)(argc, argv, &g_kapi);
 }
 
 extern "C" __attribute__((section(".text.kmain"))) void kmain(struct KernelParams* params)
 {
 
-    serial::init();
-
-    test_ata();
+    drivers::serial::init();
 
     PhysicalMemoryAllocator allocator(params->mm);
-
     kservices.allocator = &allocator;
 
-    test_allocator(allocator);
-
-    disable_pic();
+    arch::pic::disable();
 
     params->fb->set_background(DESKTOP_BG);
-    params->fb->set_font(_binary_font_psf_start);
+    params->fb->set_font(_binary_fonts_default_psf_start);
 
-    gdt_init();
-    serial::print("GDT loaded\r\n");
+    arch::gdt::init();
+    drivers::serial::print("GDT loaded\r\n");
 
-    idt_init();
-    serial::print("IDT loaded\r\n");
+    arch::idt::init();
+    drivers::serial::print("IDT loaded\r\n");
 
-    apic_init(params->madt);
-    serial::print("APIC initialized\r\n");
+    arch::apic::init(params->madt);
+    drivers::serial::print("APIC initialized\r\n");
 
-    enable_interrupts();
-    serial::print("Interrupts enabled\r\n");
-
-    launch_program();
-
+    arch::idt::enable_interrupts();
+    drivers::serial::print("Interrupts enabled\r\n");
     fs::ext2::parse_superblock();
-    fs::ext2::get_inode(2);
+
+    char* argv0[] = { (char*)"touch.elf", (char*)"file1.txt" };
+    try_exec(2, argv0);
 
     WindowManager manager(params->fb, DESKTOP_BG, kservices.allocator);
     kservices.window_manager = &manager;
@@ -194,7 +120,6 @@ extern "C" __attribute__((section(".text.kmain"))) void kmain(struct KernelParam
     kservices.window_manager->create_window({10, 10}, {600, 400}, Color::DARK_GRAY, "NanoTerm");
     kservices.window_manager->create_window({700, 10}, {600, 400}, Color::DARK_GRAY, "NanoTerm");
     kservices.window_manager->draw();
-
 
 
     for (;;) {

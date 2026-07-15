@@ -46,8 +46,10 @@ private:
 
     Window() : fb(nullptr), title(nullptr), bg(Color::BLACK), dims({0,0}), origin({0,0}), cursor(0, 0) {}
 
-    Window(FrameBuffer* fb, Point origin, Dimensions dims, Color bg, const char* name, uint32_t cursorRow, uint32_t cursorCol, bool active = false)
-    : fb(fb), title(name), bg(bg), dims(dims), origin(origin), cursor(cursorRow, cursorCol), active(active) {}
+    Window(FrameBuffer* fb, Point origin, Dimensions dims, Color bg, const char* name,
+    uint32_t cursorRow, uint32_t cursorCol, bool active = false)
+    : active(active), fb(fb), title(name), bg(bg), dims(dims),
+    origin(origin), cursor(cursorRow, cursorCol) {}
 
 public:
     void draw() {
@@ -60,9 +62,12 @@ public:
         }
     }
 
-    Point     inner_origin() const { return { origin.x + side_border, origin.y + top_border }; }
-    uint32_t  inner_width()  const { return dims.width  - 2 * side_border; }
-    uint32_t  inner_height() const { return dims.height - top_border - side_border; }
+    Point inner_origin() const { return { origin.x + side_border, origin.y + top_border }; }
+    uint32_t inner_width()  const { return dims.width  - 2 * side_border; }
+    uint32_t inner_height() const { return dims.height - top_border - side_border; }
+
+    uint32_t get_corner_dot_radius() { return corner_dot_radius; }
+    Point get_corner_dot_point() { return corner_dot_center; }
 
 
     void resolve_scancode(uint8_t scancode) {
@@ -76,6 +81,7 @@ public:
         switch (scancode) {
             case 0x1C:
                 cursor.newline(max_rows);
+                process_buffer();
                 wipe_buffer();
                 break;
             case 0x0E:
@@ -102,6 +108,7 @@ public:
     }
 
     void erase(Color bg) {
+        erase_text_cursor();
         fb->draw_rectangle(origin, dims, bg);
     }
 
@@ -134,7 +141,9 @@ private:
 
     void draw_corner_dot() {
         uint32_t radius = 6;
+        corner_dot_radius = radius;
         Point center = { origin.x + dims.width - side_border - radius - 4, origin.y + top_border / 2 };
+        corner_dot_center = center;
         fb->draw_circle(center, radius, Color::RED);
     }
 
@@ -158,6 +167,31 @@ private:
         idx = 0;
     }
 
+    void process_buffer(){
+        char word[MAX_BUFFER_SIZE];
+        uint32_t len = 0;
+        for (uint32_t i = 0; i < MAX_BUFFER_SIZE; i++){
+            char c = buf[i];
+            if (c == ' ' || c == '\n' || c == 0){
+                if (len > 0){
+                    word[len] = 0;
+                    if (util::strcmp(word, "clear")){
+                        cursor.reset();
+                        draw();
+                        drivers::serial::print(word);
+                        drivers::serial::print("\n");
+                    }
+                    len = 0;
+                }
+                if (c == '\n' || c == 0)
+                    break;
+            }
+            else {
+                word[len++] = c;
+            }
+        }
+    }
+
     bool active;
     FrameBuffer*  fb;
     const char*   title;
@@ -169,6 +203,8 @@ private:
     TextCursor    cursor;
     char buf[MAX_BUFFER_SIZE];
     uint32_t idx = 0;
+    struct Point corner_dot_center;
+    uint32_t corner_dot_radius;
 };
 
 inline void* operator new(size_t, void* ptr) noexcept { return ptr; }
@@ -181,8 +217,8 @@ public:
     WindowManager(){}
 
     WindowManager(FrameBuffer* fb, Color desktop_bg, PhysicalMemoryAllocator* allocator)
-    : mouse(fb->get_width(), fb->get_height()), fb(fb), numWindows(0),
-    desktop_bg(desktop_bg), allocator(allocator) {
+    : mouse(fb->get_width(), fb->get_height()), fb(fb), allocator(allocator),
+    numWindows(0), desktop_bg(desktop_bg) {
         mouse.init();
         children = (Window**)allocator->malloc(sizeof(Window*) * MAXIMUM_NUMBER_WINDOWS);
     }
@@ -201,10 +237,18 @@ public:
 
     void kill_window(uint32_t id) {
 
+        children[id]->active = false;
+    
+        children[id]->erase(desktop_bg);
+        children[1]->active = true;
+        children[1]->draw_text_cursor();
+
+        redraw_mouse();
+
+        numWindows--;
     }
 
     void draw() {
-        
         for (uint32_t i = 0; i < numWindows; i++)
             children[i]->draw();
     }
@@ -229,6 +273,23 @@ public:
         struct Point point = mouse.get_old_position();
 
         if (left_clicked) {
+
+            // if clicked on red box, kill window
+            if (numWindows > 0){
+                Window* win = children[active_window_id];
+                struct Point center = win->get_corner_dot_point();
+                uint32_t radius = win->get_corner_dot_radius();
+
+
+                if (point.x >= center.x - radius && point.x <= center.x + radius
+                    && point.y >= center.y - radius && point.y <= center.y + radius){
+                        kill_window(active_window_id);
+                        drivers::serial::print("Closed tab\n");
+                    }
+            }
+
+
+
             for (uint32_t idx = 0; idx < numWindows; idx++) {
                 Window* win = children[idx];
                 Dimensions dims = win->get_dims();
@@ -301,10 +362,10 @@ private:
     FrameBuffer* fb;
     PhysicalMemoryAllocator* allocator;
 
-    uint32_t     numWindows;
-    Window**   children; // array of window pointers
-    Color        desktop_bg;
-    uint8_t      active_window_id = 0;
+    uint32_t numWindows;
+    Window** children; // array of window pointers
+    Color desktop_bg;
+    uint8_t active_window_id = 0;
     bool first_draw = true;
 };
 
