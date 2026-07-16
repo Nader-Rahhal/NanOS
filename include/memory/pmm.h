@@ -58,27 +58,27 @@ public:
     }
 
     PMM_STATUS alloc_pages(uint64_t count, uint64_t& addr_out) {
-        uint64_t logical = 0;
+        uint64_t desc_base = 0;
         uint8_t* entry = (uint8_t*)mmap->get_map();
         for (uint64_t i = 0; i < mmap->num_descriptors(); i++, entry += mmap->get_desc_size()) {
             MemDescriptor* desc = (MemDescriptor*)entry;
             if ((MemType)desc->type != MemType::CONVENTIONAL_MEMORY) continue;
 
-            for (uint64_t p = 0; p < desc->numPages; p++, logical++) {
-                if (p + count > desc->numPages) break;
-
-                bool found = true;
-                for (uint64_t k = 0; k < count; k++) {
-                    if (test_bit(logical + k)) { found = false; break; }
-                }
-
-                if (found) {
-                    for (uint64_t k = 0; k < count; k++)
-                        set_bit(logical + k);
-                    addr_out = (uint64_t)desc->physAddr + p * 4096;
-                    return PMM_STATUS::ALLOC_SUCCESS;
+            if (desc->numPages >= count) {
+                for (uint64_t p = 0; p + count <= desc->numPages; p++) {
+                    bool found = true;
+                    for (uint64_t k = 0; k < count; k++) {
+                        if (test_bit(desc_base + p + k)) { found = false; break; }
+                    }
+                    if (found) {
+                        for (uint64_t k = 0; k < count; k++)
+                            set_bit(desc_base + p + k);
+                        addr_out = (uint64_t)desc->physAddr + p * 4096;
+                        return PMM_STATUS::ALLOC_SUCCESS;
+                    }
                 }
             }
+            desc_base += desc->numPages;   // always the full count, no matter how we exit
         }
         addr_out = 0;
         return PMM_STATUS::ALLOC_FAIL;

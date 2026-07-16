@@ -18,11 +18,14 @@ class FrameBuffer {
     uint32_t width;
     uint32_t height;
     uint64_t base;
-    uint32_t pitch;
+    uint32_t pitch;    
+    uint64_t size;
+    uint64_t original_base;
 
     public:
 
-    FrameBuffer(uint32_t w, uint32_t h, uint64_t b, uint32_t p) : width(w), height(h), base(b), pitch(p) {}
+    FrameBuffer(uint32_t w, uint32_t h, uint64_t b, uint32_t p, uint64_t s) : width(w), height(h), base(b), 
+    pitch(p), size(s), original_base(base) {}
 
     void set_font(uint8_t address[]){
         glyphs = address + 4;
@@ -30,6 +33,7 @@ class FrameBuffer {
 
     uint32_t get_width()  { return width;  }
     uint32_t get_height() { return height; }
+    uint64_t get_size() { return size; }
 
     void draw_string(const char* str, Point p, Color color) {
         uint32_t base_x = p.x, base_y = p.y, col = 0;
@@ -146,6 +150,18 @@ class FrameBuffer {
         for (uint32_t y = 0; y < height; y++)
             for (uint32_t x = 0; x < width; x++)
                 draw_pixel({x, y}, color);
+    }
+
+    void set_buffer_to_back(uint64_t* buf){
+        base = (uint64_t)buf;
+    }
+
+    void set_buffer_to_original(){
+        base = original_base;
+    }
+
+    void copy_back_buffer(uint64_t* backbuf) {
+        util::memcpy((void*)original_base, backbuf, size);
     }
 
     private:

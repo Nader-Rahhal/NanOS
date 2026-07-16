@@ -1,11 +1,11 @@
 #pragma once
 
 struct kernel_state {
-    char* current_working_dir;
-    char* boot_time;
-    char* kernel_name;
-    char* kernel_version_major;
-    char* kernel_version_minor;
-    char* timezone;
-    char* font_type;
+    const char* current_working_dir;
+    const char* boot_time;
+    const char* kernel_name;
+    const char* kernel_version_major;
+    const char* kernel_version_minor;
+    const char* timezone;
+    const char* font_type;
 };

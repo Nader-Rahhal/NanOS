@@ -88,12 +88,16 @@ void serial_putdec(uint64_t val) {
 }
 
 extern "C" void* memcpy(void* dst, const void* src, size_t n) {
-    auto* d = static_cast<uint8_t*>(dst);
-    auto* s = static_cast<const uint8_t*>(src);
-    while (n--) *d++ = *s++;
+    auto* d = static_cast<uint64_t*>(dst);
+    auto* s = static_cast<const uint64_t*>(src);
+    size_t chunks = n / 8;
+    while (chunks--) *d++ = *s++;
+    auto* db = reinterpret_cast<uint8_t*>(d);
+    auto* sb = reinterpret_cast<const uint8_t*>(s);
+    size_t rem = n % 8;
+    while (rem--) *db++ = *sb++;
     return dst;
 }
-
 
 extern "C" void* memset(void* dst, int c, size_t n) {
     auto* d = static_cast<uint8_t*>(dst);

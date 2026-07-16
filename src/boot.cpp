@@ -18,6 +18,31 @@ struct KernelParams {
 
 typedef void __attribute__((sysv_abi)) (*KernelEntry)(struct KernelParams *params);
 
+static void write_two_digits(char* buf, UINT8 val) {
+    buf[0] = '0' + (val / 10) % 10;
+    buf[1] = '0' + val % 10;
+}
+
+// Formats an EFI_TIME as "YYYY-MM-DD HH:MM:SS" into buf (must hold 20 bytes).
+static void format_efi_time(EFI_TIME* time, char* buf) {
+    UINT16 year = time->Year;
+    buf[0] = '0' + (year / 1000) % 10;
+    buf[1] = '0' + (year / 100) % 10;
+    buf[2] = '0' + (year / 10) % 10;
+    buf[3] = '0' + year % 10;
+    buf[4] = '-';
+    write_two_digits(buf + 5, time->Month);
+    buf[7] = '-';
+    write_two_digits(buf + 8, time->Day);
+    buf[10] = ' ';
+    write_two_digits(buf + 11, time->Hour);
+    buf[13] = ':';
+    write_two_digits(buf + 14, time->Minute);
+    buf[16] = ':';
+    write_two_digits(buf + 17, time->Second);
+    buf[19] = '\0';
+}
+
 static EFI_STATUS load_kernel(EFI_HANDLE ImageHandle, EFI_PHYSICAL_ADDRESS *LoadAddr) {
     EFI_STATUS Status;
     EFI_LOADED_IMAGE *LoadedImage;
@@ -141,7 +166,7 @@ extern "C" EFI_STATUS efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemT
         return EFI_UNSUPPORTED;
     }
 
-    FrameBuffer fb(FrameBufferWidth, FrameBufferHeight, FrameBufferAddr, PixelsPerScanLine * 4);
+    FrameBuffer fb(FrameBufferWidth, FrameBufferHeight, FrameBufferAddr, PixelsPerScanLine * 4, FrameBufferSize);
 
     UINTN MemoryMapSize = 0;
     EFI_MEMORY_DESCRIPTOR *MemoryMap = NULL;
@@ -206,9 +231,15 @@ extern "C" EFI_STATUS efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemT
             return Status;
     }
 
+    EFI_TIME boot_time;
+    static char boot_time_buf[20]; // "YYYY-MM-DD HH:MM:SS"
+    ST->RuntimeServices->GetTime(&boot_time, NULL);
+    format_efi_time(&boot_time, boot_time_buf);
+
     struct kernel_state kstate;
 
     kstate.current_working_dir = "/";
+    kstate.boot_time = boot_time_buf;
     kstate.timezone = "CT";
     kstate.kernel_name = "NanOS";
     kstate.kernel_version_major = "0";
@@ -220,6 +251,7 @@ extern "C" EFI_STATUS efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemT
     params.fb = &fb;
     params.mm = &mm;
     params.madt = madt;
+    params.kstate = &kstate;
 
     KernelEntry kernel = (KernelEntry)(UINTN)KernelAddr;
     kernel(&params);
