@@ -29,4 +29,7 @@ private:
 
     uint32_t col;
     uint32_t row;
+
+    uint32_t start_col;
+    uint32_t start_row;
 };

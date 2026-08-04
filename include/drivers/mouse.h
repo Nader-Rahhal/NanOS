@@ -22,6 +22,7 @@
 #define DATA_PORT 0x60
 #define CMD_PORT 0x64
 
+
 struct __attribute__((packed)) MousePacket {
     uint8_t flags;
     int8_t x_movement;

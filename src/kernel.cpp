@@ -18,7 +18,6 @@
 #include "fs/ext2.h"
 
 #include "kapi.h"
-#include "kstate.h"
 
 extern "C" { extern uint8_t _binary_fonts_default_psf_start[]; }
 
@@ -94,7 +93,6 @@ extern "C" __attribute__((section(".text.kmain"))) void kmain(struct KernelParam
 
     arch::pic::disable();
 
-    params->fb->set_background(DESKTOP_BG);
     params->fb->set_font(_binary_fonts_default_psf_start);
 
     arch::gdt::init();
@@ -110,15 +108,23 @@ extern "C" __attribute__((section(".text.kmain"))) void kmain(struct KernelParam
     drivers::serial::print("Interrupts enabled\r\n");
     fs::ext2::parse_superblock();
 
-    char* argv0[] = { (char*)"touch.elf", (char*)"file1.txt" };
-    try_exec(2, argv0);
-
-    WindowManager manager(params->fb, DESKTOP_BG, kservices.allocator);
+    WindowManager manager(params->fb, DESKTOP_BG, kservices.allocator, params->kstate);
     kservices.window_manager = &manager;
+    params->fb->set_background(DESKTOP_BG);
+
+    drivers::serial::print("Framebuffer width:  "); 
+    drivers::serial::print(params->fb->get_width());
+    drivers::serial::print("\r\n");
+    drivers::serial::print("Framebuffer height: "); 
+    drivers::serial::print(params->fb->get_height());
+    drivers::serial::print("\r\n");
+    drivers::serial::print("Framebuffer size:   "); 
+    drivers::serial::print(params->fb->get_size());
+    drivers::serial::print("\r\n");
     
 
-    kservices.window_manager->create_window({10, 10}, {600, 400}, Color::DARK_GRAY, "NanoTerm");
-    kservices.window_manager->create_window({700, 10}, {600, 400}, Color::DARK_GRAY, "NanoTerm");
+    kservices.window_manager->create_window({0, 0}, {600, 400}, Color::DARK_GRAY, "NanoTerm");
+    // kservices.window_manager->create_window({700, 10}, {600, 400}, Color::DARK_GRAY, "NanoTerm");
     kservices.window_manager->draw();
 
 
