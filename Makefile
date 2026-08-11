@@ -17,14 +17,14 @@ else
 endif
 
 EFI_CFLAGS = -Ignu-efi/inc -Iinclude -Ignu-efi/inc/x86_64 -Ignu-efi/inc/protocol \
-             -ffreestanding -fno-stack-protector -mno-red-zone -mno-avx \
+             -ffreestanding -fno-stack-protector -mno-red-zone -mno-avx\
              -mno-sse -DGNU_EFI_USE_MS_ABI -DCONFIG_x86_64
 
-KERN_CFLAGS = -Iinclude -ffreestanding -fno-stack-protector -mno-red-zone \
-              -mno-avx -mno-sse -O2 -Wall
+KERN_CFLAGS = -Iinclude -ffreestanding -fno-stack-protector -mno-red-zone -fno-threadsafe-statics \
+              -mno-avx -mno-sse -fno-rtti -fno-exceptions -O2 -Wall
 
 BIN_CFLAGS = -Iinclude -ffreestanding -fno-stack-protector -mno-red-zone \
-              -mno-avx -mno-sse -O2 -Wall
+              -mno-avx -mno-sse -fno-rtti -fno-exceptions -O2 -Wall
 
 .PHONY: all run clean install-programs
 
@@ -50,6 +50,21 @@ hello.o: src/bin/hello.cpp
 touch.o: src/bin/touch.cpp
 	$(CC_KERN) $(BIN_CFLAGS) -c $< -o build/touch.o
 
+ls.o: src/bin/ls.cpp
+	$(CC_KERN) $(BIN_CFLAGS) -c $< -o build/ls.o
+
+boottime.o: src/bin/boottime.cpp
+	$(CC_KERN) $(BIN_CFLAGS) -c $< -o build/boottime.o
+
+help.o: src/bin/help.cpp
+	$(CC_KERN) $(BIN_CFLAGS) -c $< -o build/help.o
+
+version.o: src/bin/version.cpp
+	$(CC_KERN) $(BIN_CFLAGS) -c $< -o build/version.o
+
+rm.o: src/bin/rm.cpp
+	$(CC_KERN) $(BIN_CFLAGS) -c $< -o build/rm.o
+
 kernel.o: src/kernel.cpp
 	$(CC_KERN) $(KERN_CFLAGS) -c $< -o build/kernel.o
 
@@ -64,6 +79,21 @@ hello.elf: hello.o bin.ld
 
 touch.elf: touch.o bin.ld
 	$(LD_KERN) -T bin.ld -o $@ build/touch.o
+
+ls.elf: ls.o bin.ld
+	$(LD_KERN) -T bin.ld -o $@ build/ls.o
+
+boottime.elf: boottime.o bin.ld
+	$(LD_KERN) -T bin.ld -o $@ build/boottime.o
+
+help.elf: help.o bin.ld
+	$(LD_KERN) -T bin.ld -o $@ build/help.o
+
+version.elf: version.o bin.ld
+	$(LD_KERN) -T bin.ld -o $@ build/version.o
+
+rm.elf: rm.o bin.ld
+	$(LD_KERN) -T bin.ld -o $@ build/rm.o
 
 kernel.elf: kernel.o util.o isr.o font_psf.o kernel.ld
 	$(LD_KERN) -T kernel.ld -o $@ build/kernel.o build/util.o build/isr.o build/font_psf.o
@@ -81,9 +111,20 @@ disk.img:
 	qemu-img create -f raw $@ 16M
 	$(MKFS) -F -b 1024 disk.img
 
-install-programs: touch.elf disk.img
-	$(DEBUGFS) -w -R "rm /touch.elf" disk.img 2>/dev/null || true
-	$(DEBUGFS) -w -R "write touch.elf touch.elf" disk.img
+install-programs: touch.elf ls.elf boottime.elf help.elf version.elf rm.elf disk.img
+	$(DEBUGFS) -w -R "mkdir /bin" disk.img 2>/dev/null || true
+	$(DEBUGFS) -w -R "rm bin/touch.elf" disk.img 2>/dev/null || true
+	$(DEBUGFS) -w -R "write touch.elf bin/touch.elf" disk.img
+	$(DEBUGFS) -w -R "rm bin/ls.elf" disk.img 2>/dev/null || true
+	$(DEBUGFS) -w -R "write ls.elf bin/ls.elf" disk.img
+	$(DEBUGFS) -w -R "rm bin/boottime.elf" disk.img 2>/dev/null || true
+	$(DEBUGFS) -w -R "write boottime.elf bin/boottime.elf" disk.img
+	$(DEBUGFS) -w -R "rm bin/help.elf" disk.img 2>/dev/null || true
+	$(DEBUGFS) -w -R "write help.elf bin/help.elf" disk.img
+	$(DEBUGFS) -w -R "rm bin/version.elf" disk.img 2>/dev/null || true
+	$(DEBUGFS) -w -R "write version.elf bin/version.elf" disk.img
+	$(DEBUGFS) -w -R "rm bin/rm.elf" disk.img 2>/dev/null || true
+	$(DEBUGFS) -w -R "write rm.elf bin/rm.elf" disk.img
 
 run: disk.img install-programs
 	qemu-system-x86_64 -m 4096 -bios RELEASEX64_OVMF.fd \

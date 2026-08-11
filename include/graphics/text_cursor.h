@@ -3,8 +3,8 @@
 
 class TextCursor {
 public:
-    TextCursor() : col(0), row(0) {}
-    TextCursor(uint32_t col, uint32_t row) : col(col), row(row), start_col(col), start_row(row) {}
+    TextCursor() : start_col(0), start_row(0), col(0), row(0) {}
+    TextCursor(uint32_t col, uint32_t row) : start_col(col), start_row(row), col(col), row(row) {}
 
     void move_left()                      { if (col > 0) col--; }
     void move_right(uint32_t max_cols)    { if (col + 1 < max_cols) col++; }
@@ -29,7 +29,4 @@ private:
 
     uint32_t col;
     uint32_t row;
-
-    uint32_t start_col;
-    uint32_t start_row;
 };

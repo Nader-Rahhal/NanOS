@@ -47,6 +47,13 @@ struct MouseState {
 };
 
 
+class MouseObserver {
+public:
+    virtual ~MouseObserver(){};
+    virtual void update(struct MouseState state) = 0;
+};
+
+
 class Mouse {
 public:
     Mouse() : fb_width(0), fb_height(0), state{false, false, false, false, false, false, false, 0, 0} {}
@@ -87,8 +94,6 @@ public:
         if (byte_index < 3) return false;
         byte_index = 0;
 
-        old_position = {(uint32_t)state.x, (uint32_t)state.y};
-
         struct MousePacket packet;
         packet.flags      = raw[0];
         packet.x_movement = raw[1];
@@ -114,38 +119,39 @@ public:
         if (state.y < 0) state.y = 0;
         if (state.y >= (int32_t)fb_height) state.y = fb_height - 1;
 
+        notify();   // push the new state to all observers
+
         return true;
     }
 
-    struct Point get_position(){
-        return {(uint32_t)state.x, (uint32_t)state.y};
+    void attach(MouseObserver* observer){
+        if (observer_count < MAX_OBSERVERS)
+            observers[observer_count++] = observer;
     }
 
-    struct Point get_old_position(){
-        return old_position;
-    }
-
-    bool left_clicked(){
-        return state.left_button_pressed;
-    }
-
-    bool right_clicked(){
-        return state.right_button_pressed;
-    }
-
-    bool middle_clicked(){
-        return state.middle_button_pressed;
+    void detach(MouseObserver* observer){
+        for (uint32_t i = 0; i < observer_count; i++){
+            if (observers[i] == observer){
+                for (uint32_t j = i; j + 1 < observer_count; j++)
+                    observers[j] = observers[j + 1];
+                observers[--observer_count] = nullptr;
+                return;
+            }
+        }
     }
 
 
 private:
 
+    static const uint32_t MAX_OBSERVERS = 4;
+
     uint32_t fb_width;
     uint32_t fb_height;
     MouseState state;
-    struct Point old_position{0, 0};
     uint8_t raw[3];
     uint8_t byte_index = 0;
+    MouseObserver* observers[MAX_OBSERVERS] = {};
+    uint32_t observer_count = 0;
 
 
     void __outb(uint16_t port, uint8_t val) {
@@ -178,4 +184,16 @@ private:
         return __inb(DATA_PORT);
     }
 
+    void notify(){
+        for (uint32_t i = 0; i < observer_count; i++)
+            observers[i]->update(state);
+    }
+
 };
+
+// new flow:
+// interrupt fires -> calls mouse.read_packet()
+// mouse.read_packet() updates mouse state and calls Notify()
+// Notify() calls Update() on all observers, passing the new mouse state
+
+// windowManager.Update() will be called, which will redraw the mouse and handle clicks/drags

@@ -1,18 +1,19 @@
 #pragma once
 #include <stdint.h>
-#include <new>
+#include "new.h"
 #include "util.h"
 #include "graphics/color.h"
 #include "graphics/framebuffer.h"
 #include "drivers/serial.h"
 #include "memory/allocator.h"
+#include "nstd/managed_ptr.h"
+
+#include "apps/nanoterm.h"
 #include "kstate.h"
+#include "kapi.h"
 
 #define TITLE_COLOR       Color::BLACK
 #define BORDER_COLOR      Color::SILVER
-#define TEXT_CURSOR_COLOR Color::WHITE
-#define TEXT_COLOR        Color::WHITE
-#define MAX_BUFFER_SIZE 64
 
 #define CURSOR_WIDTH  12
 #define CURSOR_HEIGHT 19
@@ -39,200 +40,216 @@ static const uint8_t retro_cursor_bitmap[CURSOR_HEIGHT][CURSOR_WIDTH] = {
     {0,0,0,0,0,0,0,0,0,0,0,0},
 };
 
+#define NAVBAR_OPTION_LOGO_HEIGHT 35
+#define NAVBAR_OPTION_LOGO_HEIGHT 35
 
-class ShellApplication {
-public:
-    ShellApplication()
-    : fb(nullptr), allocator(nullptr), grid(nullptr), bg(Color::BLACK),
-      inner({0, 0}), max_cols(0), max_rows(0), cursor(0, 0), idx(0), kstate(nullptr) {
-        wipe_buffer();
-    }
+static const uint8_t terminal_logo[NAVBAR_OPTION_LOGO_HEIGHT][NAVBAR_OPTION_LOGO_HEIGHT] = {
+    {0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0},
+    {0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0},
+    {0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0},
+    {1,1,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
+    {1,1,1,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
+    {1,1,1,1,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
+    {1,1,1,1,1,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
+    {1,1,1,1,1,1,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
+    {1,1,1,1,1,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
+    {1,1,1,1,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
+    {1,1,1,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
+    {1,1,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
+    {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
+    {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
+    {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
+    {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
+    {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
+    {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
+    {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
+    {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
+    {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
+    {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
+    {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
+    {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
+    {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
+    {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
+    {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
+    {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
+    {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
+    {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
+    {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
+    {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
+    {0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0},
+    {0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0},
+    {0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0},
+};
 
-    void init(FrameBuffer* framebuffer, PhysicalMemoryAllocator* alloc, Point inner_origin, uint32_t cols, uint32_t rows, Color background, kernel_state* kernelState) {
-        fb        = framebuffer;
-        allocator = alloc;
-        inner     = inner_origin;
-        max_cols  = cols;
-        max_rows  = rows;
-        bg        = background;
-        kstate    = kernelState;
+static const uint8_t clock_logo[NAVBAR_OPTION_LOGO_HEIGHT][NAVBAR_OPTION_LOGO_HEIGHT] = {
+    {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    {0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    {0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0},
+    {0,0,0,0,0,0,0,0,0,1,1,1,1,1,2,2,2,2,2,2,2,1,1,1,1,1,0,0,0,0,0,0,0,0,0},
+    {0,0,0,0,0,0,0,1,1,1,1,2,2,2,2,2,2,1,2,2,2,2,2,2,1,1,1,1,0,0,0,0,0,0,0},
+    {0,0,0,0,0,0,1,1,1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1,1,1,0,0,0,0,0,0},
+    {0,0,0,0,0,1,1,1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1,1,1,0,0,0,0,0},
+    {0,0,0,0,1,1,1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1,1,1,0,0,0,0},
+    {0,0,0,0,1,1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1,1,0,0,0,0},
+    {0,0,0,1,1,2,2,2,2,2,2,2,2,2,2,2,2,1,2,2,2,2,2,2,2,2,2,2,2,2,1,1,0,0,0},
+    {0,0,0,1,1,2,2,2,2,2,2,2,2,2,2,2,2,1,2,2,2,2,2,2,2,2,2,2,2,2,1,1,0,0,0},
+    {0,0,1,1,2,2,2,2,2,2,2,2,2,2,2,2,2,1,2,2,2,2,2,2,2,2,2,2,2,2,2,1,1,0,0},
+    {0,0,1,1,2,2,2,2,2,2,2,2,2,2,2,2,2,1,2,2,2,2,2,2,2,2,2,2,2,2,2,1,1,0,0},
+    {0,1,1,1,2,2,2,2,2,2,2,2,2,2,2,2,2,1,2,2,2,2,2,2,2,2,2,2,2,2,2,1,1,1,0},
+    {0,1,1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1,1,0},
+    {0,1,1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1,1,0},
+    {0,1,1,2,2,2,2,2,2,2,2,2,2,2,2,2,1,1,1,2,2,2,2,2,2,2,2,2,2,2,2,2,1,1,0},
+    {0,1,1,2,1,2,2,2,2,2,2,2,2,2,2,2,1,1,1,1,1,1,1,1,1,1,1,1,1,2,1,2,1,1,0},
+    {0,1,1,2,2,2,2,2,2,2,2,2,2,2,2,2,1,1,1,2,2,2,2,2,2,2,2,2,2,2,2,2,1,1,0},
+    {0,1,1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1,1,0},
+    {0,1,1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1,1,0},
+    {0,1,1,1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1,1,1,0},
+    {0,0,1,1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1,1,0,0},
+    {0,0,1,1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1,1,0,0},
+    {0,0,0,1,1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1,1,0,0,0},
+    {0,0,0,1,1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1,1,0,0,0},
+    {0,0,0,0,1,1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1,1,0,0,0,0},
+    {0,0,0,0,1,1,1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1,1,1,0,0,0,0},
+    {0,0,0,0,0,1,1,1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1,1,1,0,0,0,0,0},
+    {0,0,0,0,0,0,1,1,1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1,1,1,0,0,0,0,0,0},
+    {0,0,0,0,0,0,0,1,1,1,1,2,2,2,2,2,2,1,2,2,2,2,2,2,1,1,1,1,0,0,0,0,0,0,0},
+    {0,0,0,0,0,0,0,0,0,1,1,1,1,1,2,2,2,2,2,2,2,1,1,1,1,1,0,0,0,0,0,0,0,0,0},
+    {0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0},
+    {0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+};
 
-        grid = (char*)allocator->malloc(grid_size());
-        wipe_grid();
+static const uint8_t settings_logo[NAVBAR_OPTION_LOGO_HEIGHT][NAVBAR_OPTION_LOGO_HEIGHT] = {
+    {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    {0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    {0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    {0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,1,1,1,1,1,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0},
+    {0,0,0,0,0,0,0,1,1,1,1,0,0,0,1,1,1,1,1,1,1,0,0,0,1,1,1,1,0,0,0,0,0,0,0},
+    {0,0,0,0,0,0,1,1,1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,0,0,0,0,0,0},
+    {0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0},
+    {0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0},
+    {0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0},
+    {0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0},
+    {0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,2,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0},
+    {0,0,0,0,0,0,0,1,1,1,1,1,1,1,2,2,2,2,2,2,2,1,1,1,1,1,1,1,0,0,0,0,0,0,0},
+    {0,0,0,1,1,0,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,2,1,1,1,1,1,1,1,0,1,1,0,0,0},
+    {0,0,0,1,1,1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,2,1,1,1,1,1,1,1,1,1,1,0,0,0},
+    {0,0,0,1,1,1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,2,1,1,1,1,1,1,1,1,1,1,0,0,0},
+    {0,0,1,1,1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,2,2,2,1,1,1,1,1,1,1,1,1,1,0,0},
+    {0,0,0,1,1,1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,2,1,1,1,1,1,1,1,1,1,1,0,0,0},
+    {0,0,0,1,1,1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,2,1,1,1,1,1,1,1,1,1,1,0,0,0},
+    {0,0,0,1,1,0,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,2,1,1,1,1,1,1,1,0,1,1,0,0,0},
+    {0,0,0,0,0,0,0,1,1,1,1,1,1,1,2,2,2,2,2,2,2,1,1,1,1,1,1,1,0,0,0,0,0,0,0},
+    {0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,2,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0},
+    {0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0},
+    {0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0},
+    {0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0},
+    {0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0},
+    {0,0,0,0,0,0,1,1,1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,0,0,0,0,0,0},
+    {0,0,0,0,0,0,0,1,1,1,1,0,0,0,1,1,1,1,1,1,1,0,0,0,1,1,1,1,0,0,0,0,0,0,0},
+    {0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,1,1,1,1,1,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0},
+    {0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    {0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+};
 
-        cursor.reset();
-        wipe_buffer();
+static const uint8_t manual_logo[NAVBAR_OPTION_LOGO_HEIGHT][NAVBAR_OPTION_LOGO_HEIGHT] = {
+    {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    {0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0},
+    {0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0},
+    {0,0,0,1,1,2,2,2,2,2,2,2,2,2,2,2,1,1,1,2,2,2,2,2,2,2,2,2,2,2,1,1,0,0,0},
+    {0,0,0,1,1,2,2,2,2,2,2,2,2,2,2,2,1,1,1,2,2,2,2,2,2,2,2,2,2,2,1,1,0,0,0},
+    {0,0,0,1,1,2,2,2,2,2,2,2,2,2,2,2,1,1,1,2,2,2,2,2,2,2,2,2,2,2,1,1,0,0,0},
+    {0,0,0,1,1,2,1,1,1,1,1,1,1,1,1,2,1,1,1,2,1,1,1,1,1,1,1,1,1,2,1,1,0,0,0},
+    {0,0,0,1,1,2,2,2,2,2,2,2,2,2,2,2,1,1,1,2,2,2,2,2,2,2,2,2,2,2,1,1,0,0,0},
+    {0,0,0,1,1,2,2,2,2,2,2,2,2,2,2,2,1,1,1,2,2,2,2,2,2,2,2,2,2,2,1,1,0,0,0},
+    {0,0,0,1,1,2,2,2,2,2,2,2,2,2,2,2,1,1,1,2,2,2,2,2,2,2,2,2,2,2,1,1,0,0,0},
+    {0,0,0,1,1,2,1,1,1,1,1,1,1,1,1,2,1,1,1,2,1,1,1,1,1,1,1,1,1,2,1,1,0,0,0},
+    {0,0,0,1,1,2,2,2,2,2,2,2,2,2,2,2,1,1,1,2,2,2,2,2,2,2,2,2,2,2,1,1,0,0,0},
+    {0,0,0,1,1,2,2,2,2,2,2,2,2,2,2,2,1,1,1,2,2,2,2,2,2,2,2,2,2,2,1,1,0,0,0},
+    {0,0,0,1,1,2,2,2,2,2,2,2,2,2,2,2,1,1,1,2,2,2,2,2,2,2,2,2,2,2,1,1,0,0,0},
+    {0,0,0,1,1,2,1,1,1,1,1,1,1,1,1,2,1,1,1,2,1,1,1,1,1,1,1,1,1,2,1,1,0,0,0},
+    {0,0,0,1,1,2,2,2,2,2,2,2,2,2,2,2,1,1,1,2,2,2,2,2,2,2,2,2,2,2,1,1,0,0,0},
+    {0,0,0,1,1,2,2,2,2,2,2,2,2,2,2,2,1,1,1,2,2,2,2,2,2,2,2,2,2,2,1,1,0,0,0},
+    {0,0,0,1,1,2,2,2,2,2,2,2,2,2,2,2,1,1,1,2,2,2,2,2,2,2,2,2,2,2,1,1,0,0,0},
+    {0,0,0,1,1,2,1,1,1,1,1,1,1,1,1,2,1,1,1,2,1,1,1,1,1,1,1,1,1,2,1,1,0,0,0},
+    {0,0,0,1,1,2,2,2,2,2,2,2,2,2,2,2,1,1,1,2,2,2,2,2,2,2,2,2,2,2,1,1,0,0,0},
+    {0,0,0,1,1,2,2,2,2,2,2,2,2,2,2,2,1,1,1,2,2,2,2,2,2,2,2,2,2,2,1,1,0,0,0},
+    {0,0,0,1,1,2,2,2,2,2,2,2,2,2,2,2,1,1,1,2,2,2,2,2,2,2,2,2,2,2,1,1,0,0,0},
+    {0,0,0,1,1,2,2,2,2,2,2,2,2,2,2,2,1,1,1,2,2,2,2,2,2,2,2,2,2,2,1,1,0,0,0},
+    {0,0,0,1,1,2,2,2,2,2,2,2,2,2,2,2,1,1,1,2,2,2,2,2,2,2,2,2,2,2,1,1,0,0,0},
+    {0,0,0,1,1,2,2,2,2,2,2,2,2,2,2,2,1,1,1,2,2,2,2,2,2,2,2,2,2,2,1,1,0,0,0},
+    {0,0,0,1,1,2,2,2,2,2,2,2,2,2,2,2,1,1,1,2,2,2,2,2,2,2,2,2,2,2,1,1,0,0,0},
+    {0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0},
+    {0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0},
+    {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+};
 
-        print_banner();
-    }
-
-    ~ShellApplication() {
-        if (grid && allocator) {
-            allocator->free(grid, grid_size());
-            grid = nullptr;
-        }
-    }
-    // needs this
-    void handle_char(char ch) {
-        erase_cursor();
-
-        switch (ch) {
-            case '\n':
-                cursor.newline(max_rows);
-                process_buffer();
-                wipe_buffer();
-                echo_char('>');
-                cursor.move_right(max_cols);
-                break;
-
-            case '\b':
-                if (cursor.get_col() > 1) {
-                    cursor.move_left();
-                    cell_at_cursor() = 0;
-                    erase_cell();
-                    if (idx > 0) { idx--; buf[idx] = 0; }
-                }
-                break;
-
-            default:
-                if (idx >= MAX_BUFFER_SIZE - 1) break;
-                buf[idx++] = ch;
-                cell_at_cursor() = ch;
-                echo_char(ch);
-                cursor.move_right(max_cols);
-                break;
-        }
-
-        draw_cursor();
-    }
-    
-    // needs this for any redraws to restore state
-    void redraw() {
-        for (uint32_t row = 0; row < max_rows; row++) {
-            for (uint32_t col = 0; col < max_cols; col++) {
-                char ch = grid[row * max_cols + col];
-                if (ch == 0) continue;
-                char str[2] = {ch, '\0'};
-                fb->draw_string(str, cell_origin(row, col), TEXT_COLOR);
-            }
-        }
-    }
-
-    void draw_cursor() {
-        fb->draw_rectangle(cursor_cell_offset(0, 14), {8, 2}, TEXT_CURSOR_COLOR);
-    }
-
-    void erase_cursor() {
-        fb->draw_rectangle(cursor_cell_offset(0, 14), {8, 2}, bg);
-    }
-
-private:
-    uint32_t grid_size() const { return max_rows * max_cols; }
-
-    char& cell_at_cursor() {
-        return grid[cursor.get_row() * max_cols + cursor.get_col()];
-    }
-
-    Point cell_origin(uint32_t row, uint32_t col) {
-        return { inner.x + col * 8, inner.y + row * 16 };
-    }
-
-    Point cursor_cell_offset(uint32_t dx, uint32_t dy) {
-        return { inner.x + cursor.get_col() * 8 + dx,
-                 inner.y + cursor.get_row() * 16 + dy };
-    }
-
-    void echo_char(char ch) {
-        char str[2] = {ch, '\0'};
-        fb->draw_string(str, cursor_cell_offset(0, 0), TEXT_COLOR);
-    }
-
-    void erase_cell() {
-        fb->draw_rectangle(cursor_cell_offset(0, 0), {8, 16}, bg);
-    }
-
-    void wipe_grid() {
-        for (uint32_t i = 0; i < grid_size(); i++)
-            grid[i] = 0;
-    }
-
-    void wipe_buffer() {
-        for (uint32_t i = 0; i < MAX_BUFFER_SIZE; i++)
-            buf[i] = 0;
-        idx = 0;
-    }
-
-    void process_buffer() {
-
-    }
-
-    void print_char_to_grid(char ch) {
-        if (ch == '\n') {
-            cursor.newline(max_rows);
-            return;
-        }
-        cell_at_cursor() = ch;
-        cursor.move_right(max_cols);
-    }
-
-    void print_string(const char* str) {
-        for (const char* p = str; *p; p++) print_char_to_grid(*p);
-    }
-
-    void print_banner() {
-        if (!kstate) return;
-
-        print_string(kstate->kernel_name);
-        print_string(" v");
-        print_string(kstate->kernel_version_major);
-        print_string(".");
-        print_string(kstate->kernel_version_minor);
-        print_char_to_grid('\n');
-
-        print_string("Booted: ");
-        print_string(kstate->boot_time);
-        print_char_to_grid('\n');
-        print_char_to_grid('\n');
-        print_char_to_grid('>');
-    }
-
-    FrameBuffer*             fb;
-    PhysicalMemoryAllocator* allocator;
-    char*                    grid;   // max_rows * max_cols cells; the record
-    Color                    bg;
-    Point                    inner;  // top-left pixel of the content region
-    uint32_t                 max_cols;
-    uint32_t                 max_rows;
-    TextCursor               cursor;
-    char                     buf[MAX_BUFFER_SIZE];
-    uint32_t                 idx;
-    kernel_state*            kstate;
+static const uint8_t filesystem_logo[NAVBAR_OPTION_LOGO_HEIGHT][NAVBAR_OPTION_LOGO_HEIGHT] = {
+    {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    {0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    {0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    {0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    {0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0},
+    {0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0},
+    {0,0,0,1,1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1,1,0,0,0},
+    {0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0},
+    {0,0,0,1,1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1,1,0,0,0},
+    {0,0,0,1,1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1,1,0,0,0},
+    {0,0,0,1,1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1,1,0,0,0},
+    {0,0,0,1,1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1,1,0,0,0},
+    {0,0,0,1,1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1,1,0,0,0},
+    {0,0,0,1,1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1,1,0,0,0},
+    {0,0,0,1,1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1,1,0,0,0},
+    {0,0,0,1,1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1,1,0,0,0},
+    {0,0,0,1,1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1,1,0,0,0},
+    {0,0,0,1,1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1,1,0,0,0},
+    {0,0,0,1,1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1,1,0,0,0},
+    {0,0,0,1,1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1,1,0,0,0},
+    {0,0,0,1,1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1,1,0,0,0},
+    {0,0,0,1,1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1,1,0,0,0},
+    {0,0,0,1,1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1,1,0,0,0},
+    {0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0},
+    {0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0},
+    {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
 };
 
 class WindowManager;
 
 class Window {
-private:
-    friend class WindowManager;
-
-    Window() : active(false), fb(nullptr), title(nullptr), bg(Color::BLACK),
-               dims({0, 0}), origin({0, 0}), kstate(nullptr) {}
-
-    Window(FrameBuffer* fb, PhysicalMemoryAllocator* allocator, Point origin,
-           Dimensions dims, Color bg, const char* name, kernel_state* kstate, bool active = false)
-    : active(active), fb(fb), title(name), bg(bg), dims(dims), origin(origin), kstate(kstate) {
-        app.init(fb, allocator, inner_origin(), inner_width() / 8, inner_height() / 16, bg, kstate);
-    }
-
 public:
+
+    Window(FrameBuffer* fb, Point origin, Dimensions dims, Color bg, const char* name, kernel_state* kstate, kernel_api* kapi, bool active = false)
+    : active(active), fb(fb), title(name), bg(bg), dims(dims), origin(origin), kstate(kstate), kapi(kapi) {
+        app = nstd::make_managed<Application, NanoTerm>(fb, inner_origin(), inner_width() / 8, inner_height() / 16, bg, kstate, kapi);
+    }
+    
     void draw() {
         fb->draw_rectangle(origin, dims, bg);
         draw_borders();
         draw_title();
         draw_corner_dot();
-        app.redraw();
+        app->redraw();
         if (active) {
-            app.draw_cursor();
+            app->draw_cursor();
         }
     }
 
@@ -256,17 +273,36 @@ public:
                 break;
         }
 
-        app.handle_char(ch);
+        app->handle_char(ch);
     }
 
     void erase(Color desktop_bg) {
         fb->draw_rectangle(origin, dims, desktop_bg);
     }
 
+    void move(int32_t dx, int32_t dy) {
+        origin.x = (uint32_t)((int32_t)origin.x + dx);
+        origin.y = (uint32_t)((int32_t)origin.y + dy);
+        app->set_inner(inner_origin());
+    }
+
+    bool in_title_bar(Point p) const {
+        return p.x >= origin.x && p.x <= origin.x + dims.width && p.y >= origin.y && p.y <= origin.y + top_border;
+    }
+
+    bool contains(Point p) const {
+        return p.x >= origin.x && p.x <= origin.x + dims.width && p.y >= origin.y && p.y <= origin.y + dims.height;
+    }
+
+    bool in_close_button(Point p) const {
+        Point c = corner_dot_center;
+        uint32_t r = corner_dot_radius;
+        return p.x >= c.x - r && p.x <= c.x + r && p.y >= c.y - r && p.y <= c.y + r;
+    }
+
     struct Dimensions get_dims() { return dims; }
     struct Point get_origin()    { return origin; }
 
-private:
     void draw_borders() {
         uint32_t x = origin.x, y = origin.y;
         uint32_t w = dims.width, h = dims.height;
@@ -301,38 +337,63 @@ private:
     uint32_t         side_border = 5;
     Dimensions       dims;
     Point            origin;
-    ShellApplication app;            // owns grid, buffer, cursor, all text state
-    struct Point     corner_dot_center;
+    nstd::managed_ptr<Application> app;
     uint32_t         corner_dot_radius;
+    Point            corner_dot_center;
     kernel_state*    kstate;
+    kernel_api*      kapi;
 };
 
 #define MAXIMUM_NUMBER_WINDOWS 4
 
-class WindowManager {
+#define NAVBAR_BG Color::WHITE
+#define NAVBAR_OPTIONS 5
+#define NAVBAR_HEIGHT 45
+
+class WindowManager : public MouseObserver {
 public:
 
-    WindowManager() {}
-
-    WindowManager(FrameBuffer* fb, Color desktop_bg, PhysicalMemoryAllocator* allocator, kernel_state* kstate)
-    : mouse(fb->get_width(), fb->get_height()), fb(fb), allocator(allocator),
-      kstate(kstate), numWindows(0), desktop_bg(desktop_bg) {
-        mouse.init();
-        children = (Window**)allocator->malloc(sizeof(Window*) * MAXIMUM_NUMBER_WINDOWS);
-        back_buffer = (uint64_t*)allocator->malloc(fb->get_size());
+    WindowManager(FrameBuffer* fb, Color desktop_bg, kernel_state* kstate, kernel_api* kapi)
+    : fb(fb), kstate(kstate), kapi(kapi), numWindows(0), desktop_bg(desktop_bg) {
+        
+        drivers::serial::print("Acquiring back buffer memory\n");
+        back_buffer = (uint64_t*)PhysicalMemoryAllocatorSingleton::getInstance().malloc(fb->get_size());
         fb->set_buffer_to_back(back_buffer);
+        navbar_options[0] = "NanoTerm";
+        navbar_options[1] = "Clock";
+        navbar_options[2] = "Settings";
+        navbar_options[3] = "Files";
+        navbar_options[4] = "User Manual";
     }
 
+    ~WindowManager(){
+        drivers::serial::print("Freeing back buffer memory\n");
+        PhysicalMemoryAllocatorSingleton::getInstance().free(back_buffer, fb->get_size());
+    }
+
+    void update(struct MouseState state) override {
+        Point pos = { (uint32_t)state.x, (uint32_t)state.y };
+        bool left = state.left_button_pressed;
+
+        process_drag(pos, left);
+        if (left) process_click(prev_pos);
+        draw_cursor_overlay(pos);
+
+        wasLeftPressed = left;
+        prev_pos = pos;
+
+    }
 
     uint32_t create_window(Point origin, Dimensions dims, Color bg, const char* name) {
         if (numWindows >= MAXIMUM_NUMBER_WINDOWS) return -1;
-        bool active = (numWindows == 0); // first window is active by default
 
-        void* mem = allocator->malloc(sizeof(Window));
-        if (!mem) return -1;
+        if (numWindows > 0) {
+            children[active_window_id]->active = false;
+            children[active_window_id]->app->erase_cursor();
+        }
 
-        Window* win = new (mem) Window(fb, allocator, origin, dims, bg, name, kstate, active);
-        children[numWindows] = win;
+        children[numWindows] = nstd::make_managed<Window>(fb, origin, dims, bg, name, kstate, kapi, true);
+        active_window_id = numWindows;
         return numWindows++;
     }
 
@@ -342,13 +403,10 @@ public:
         children[id]->active = false;
         children[id]->erase(desktop_bg);
 
-        // Destructor first (frees the app's grid), then release the Window
-        // memory itself.
-        children[id]->~Window();
-        allocator->free(children[id], sizeof(Window));
+        children[id].reset();
 
         for (uint32_t i = id; i < numWindows - 1; i++)
-            children[i] = children[i + 1];
+            children[i] = nstd::move(children[i + 1]);
         children[numWindows - 1] = nullptr;
         numWindows--;
 
@@ -366,85 +424,26 @@ public:
     }
 
     void draw() {
-        
+
+        draw_navbar();
         for (uint32_t i = 0; i < numWindows; i++){
-            drivers::serial::print(children[i]->get_dims().width);
             children[i]->draw();
         }
+
+
         fb->copy_back_buffer(back_buffer);
     }
+
 
     void change_active(uint8_t next_active) {
         if (next_active == active_window_id) return;
 
         children[active_window_id]->active = false;
-        children[active_window_id]->app.erase_cursor();
+        children[active_window_id]->app->erase_cursor();
 
         children[next_active]->active = true;
-        children[next_active]->app.draw_cursor();
+        children[next_active]->app->draw_cursor();
         active_window_id = next_active;
-    }
-
-    bool read_packet() {
-        return mouse.read_packet();
-    }
-
-    void redraw_mouse() {
-
-        bool left_clicked = mouse.left_clicked();
-        struct Point point = mouse.get_old_position();
-
-        if (left_clicked) {
-
-            if (numWindows > 0) {
-                Window* win = children[active_window_id];
-                struct Point center = win->get_corner_dot_point();
-                uint32_t radius = win->get_corner_dot_radius();
-
-                if (point.x >= center.x - radius && point.x <= center.x + radius
-                    && point.y >= center.y - radius && point.y <= center.y + radius) {
-                        kill_window(active_window_id);
-                        drivers::serial::print("Closed tab\n");
-                    }
-            }
-
-            for (uint32_t idx = 0; idx < numWindows; idx++) {
-                Window* win = children[idx];
-                Dimensions dims = win->get_dims();
-                Point origin = win->get_origin();
-
-                if (point.x >= origin.x && point.x <= origin.x + dims.width &&
-                    point.y >= origin.y && point.y <= origin.y + dims.height) {
-                    change_active(idx);
-                    break;
-                }
-            }
-        }
-
-        fb->copy_back_buffer(back_buffer);
-        fb->set_buffer_to_original();
-
-        point = mouse.get_position();
-        int32_t cx = (int32_t)point.x;
-        int32_t cy = (int32_t)point.y;
-
-        for (int32_t row = 0; row < CURSOR_HEIGHT; row++) {
-            for (int32_t col = 0; col < CURSOR_WIDTH; col++) {
-                uint8_t kind = retro_cursor_bitmap[row][col];
-                if (kind == 0) continue;
-                int32_t x = cx + col;
-                int32_t y = cy + row;
-                if (x < 0 || y < 0) continue;
-                if ((uint32_t)x >= fb->get_width() || (uint32_t)y >= fb->get_height()) continue;
-
-                if (kind == 1)
-                    fb->set_pixel({(uint32_t)x, (uint32_t)y}, 0x00, 0x00, 0x00);
-                else
-                    fb->set_pixel({(uint32_t)x, (uint32_t)y}, 0xFF, 0xFF, 0xFF);
-            }
-        }
-
-        fb->set_buffer_to_back(back_buffer);
     }
 
     void process_scancode(uint8_t code) {
@@ -455,12 +454,128 @@ public:
     }
 
 private:
-    Mouse mouse;
+    void process_drag(Point pos, bool left) {
+        if (left && !wasLeftPressed)      { dragging = true;  drag_start = pos; }
+        else if (!left && wasLeftPressed) { dragging = false; drag_end   = pos; }
+
+        if (wasDragging && !dragging && numWindows > 0) {
+            Window* win = children[active_window_id].get();
+            if (win->in_title_bar(drag_start)) {
+                win->erase(desktop_bg);
+                win->move((int32_t)drag_end.x - (int32_t)drag_start.x, (int32_t)drag_end.y - (int32_t)drag_start.y);
+                win->draw();
+            }
+        }
+        wasDragging = dragging;
+    }
+
+    void draw_navbar(){
+        fb->draw_rectangle({0, fb->get_height() - NAVBAR_HEIGHT}, {fb->get_width(), NAVBAR_HEIGHT}, NAVBAR_BG);
+        uint32_t space_per_item = fb->get_width() / NAVBAR_OPTIONS;
+
+        uint32_t bottom_y = fb->get_height();
+        uint32_t top_y = fb->get_height() - NAVBAR_HEIGHT;
+        uint32_t middle_y = (bottom_y + top_y) / 2;
+
+        for (int i = 0; i < NAVBAR_OPTIONS; i++){
+            uint32_t left_x = space_per_item * i;
+            uint32_t right_x = space_per_item * (i + 1);
+            uint32_t middle_x = (left_x + right_x) / 2;
+
+            const uint8_t (*logo)[NAVBAR_OPTION_LOGO_HEIGHT];
+            switch (i) {
+                case 0:  logo = terminal_logo; break;
+                case 1:  logo = clock_logo;    break;
+                case 2:  logo = settings_logo; break;
+                case 3:  logo = filesystem_logo; break;
+                case 4:  logo = manual_logo;   break;
+                default: logo = clock_logo;    break;
+            }
+
+            for (int32_t row = 0; row < NAVBAR_OPTION_LOGO_HEIGHT; row++) {
+                for (int32_t col = 0; col < NAVBAR_OPTION_LOGO_HEIGHT; col++) {
+                    uint8_t kind = logo[row][col];
+                    if (kind == 0) continue;
+                    int32_t x = (int32_t)middle_x - (35 / 2)+ col;
+                    int32_t y = (int32_t)middle_y - (35 / 2) + row;
+                    if (x < 0 || y < 0) continue;
+                    if ((uint32_t)x >= fb->get_width() || (uint32_t)y >= fb->get_height()) continue;
+
+                    uint8_t v = (kind == 1) ? 0x00 : 0xFF;
+                    fb->set_pixel({(uint32_t)x, (uint32_t)y}, v, v, v);
+                }
+            }
+        }
+    }
+
+    void process_click(Point at) {
+        if (numWindows == 0) return;
+
+        uint32_t bottom_y = fb->get_height();
+        uint32_t top_y = fb->get_height() - NAVBAR_HEIGHT;
+
+        if (at.y >= top_y && at.y < bottom_y) {
+            uint32_t space_per_item = fb->get_width() / NAVBAR_OPTIONS;
+            uint32_t option_index = at.x / space_per_item;
+            if (option_index < NAVBAR_OPTIONS) {
+                switch (option_index) {
+                    case 0:  create_window({100, 100}, {400, 300}, Color::BLACK, "NanoTerm"); break;
+                    case 1:  create_window({150, 150}, {300, 200}, Color::BLACK, "Clock"); break;
+                    case 2:  create_window({200, 200}, {350, 250}, Color::BLACK, "Settings"); break;
+                    case 3:  create_window({250, 250}, {400, 300}, Color::BLACK, "Files"); break;
+                    case 4:  create_window({300, 300}, {450, 350}, Color::BLACK, "User Manual"); break;
+                }
+                draw();
+                return;
+            }
+        }
+
+        if (children[active_window_id]->in_close_button(at)) {
+            kill_window(active_window_id);
+            return;
+        }
+
+        for (uint32_t i = 0; i < numWindows; i++) {
+            if (children[i]->contains(at)) { change_active(i); break; }
+        }
+    }
+
+    void draw_cursor_overlay(Point pos) {
+        fb->copy_back_buffer(back_buffer);
+        fb->set_buffer_to_original();
+
+        for (int32_t row = 0; row < CURSOR_HEIGHT; row++) {
+            for (int32_t col = 0; col < CURSOR_WIDTH; col++) {
+                uint8_t kind = retro_cursor_bitmap[row][col];
+                if (kind == 0) continue;
+                int32_t x = (int32_t)pos.x + col;
+                int32_t y = (int32_t)pos.y + row;
+                if (x < 0 || y < 0) continue;
+                if ((uint32_t)x >= fb->get_width() || (uint32_t)y >= fb->get_height()) continue;
+
+                uint8_t v = (kind == 1) ? 0x00 : 0xFF;
+                fb->set_pixel({(uint32_t)x, (uint32_t)y}, v, v, v);
+            }
+        }
+
+        fb->set_buffer_to_back(back_buffer);
+    }
+
+    bool wasLeftPressed = false;
+    bool wasDragging = false;
+    bool dragging = false;
+    Point drag_start{0, 0};
+    Point drag_end{0, 0};
+    Point prev_pos{0, 0};   // mouse position from the previous packet
+
+    char* navbar_options[NAVBAR_OPTIONS];
+
     FrameBuffer* fb;
-    PhysicalMemoryAllocator* allocator;
     kernel_state* kstate;
+    kernel_api* kapi;
+
     uint32_t numWindows;
-    Window** children; // array of window pointers
+    nstd::managed_ptr<Window> children[MAXIMUM_NUMBER_WINDOWS];
     uint64_t* back_buffer;
     Color desktop_bg;
     uint8_t active_window_id = 0;

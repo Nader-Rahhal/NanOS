@@ -483,6 +483,8 @@ namespace detail {
 
     // unlink a name from the root directory. if that was the last hard link
     // release the inode back to the bitmap + counters
+
+    
     bool delete_file(const char* name){
         detail::inode parent = detail::get_inode(ROOT_INODE);
         uint32_t block_size = 1024u << detail::sb.block_size;
@@ -546,13 +548,15 @@ namespace detail {
         return -1;
     }
 
-    uint32_t lookup(const char* name){
-        detail::inode parent = detail::get_inode(ROOT_INODE);
+    // search a single directory (by inode number) for an entry named
+    // name[0..name_len). returns its inode number, or 0 if not present.
+    // name need not be NUL-terminated (only name_len bytes are compared).
+    uint32_t lookup_in_dir(uint32_t dir_inode_num, const char* name, uint8_t name_len){
+        detail::inode dir = detail::get_inode(dir_inode_num);
         uint32_t block_size = 1024u << detail::sb.block_size;
-        uint8_t name_len = (uint8_t)util::strlen(name);
 
         for (int b = 0; b < 12; b++){
-            uint32_t block_num = parent.direct_block_ptrs[b];
+            uint32_t block_num = dir.direct_block_ptrs[b];
             if (block_num == 0) break;
 
             uint8_t block[1024];
@@ -570,6 +574,63 @@ namespace detail {
             }
         }
         return 0;
+    }
+
+    // resolve a '/'-separated path from the root directory, one component at a
+    // time. leading and duplicate slashes are ignored. returns the target
+    // inode number, or 0 if any component is missing. (empty path -> root.)
+    uint32_t lookup(const char* path){
+        uint32_t current = ROOT_INODE;
+        const char* p = path;
+
+        while (*p == '/') p++;              // skip leading slashes
+
+        while (*p){
+            const char* start = p;
+            while (*p && *p != '/') p++;    // span one path component
+            uint8_t len = (uint8_t)(p - start);
+
+            current = lookup_in_dir(current, start, len);
+            if (current == 0) return 0;
+
+            while (*p == '/') p++;          // skip separators to next component
+        }
+        return current;
+    }
+
+    // list the entries of the root directory. each entry's name is written,
+    // NUL-terminated, into names[i]; at most max_entries are produced.
+    // returns the number of names written.
+    // (only the root directory is supported for now, like lookup/delete_file.)
+    uint32_t list_entries(char names[][256], uint32_t max_entries){
+        detail::inode dir = detail::get_inode(ROOT_INODE);
+        uint32_t block_size = 1024u << detail::sb.block_size;
+        uint32_t count = 0;
+
+        for (int b = 0; b < 12; b++){
+            uint32_t block_num = dir.direct_block_ptrs[b];
+            if (block_num == 0) break;
+
+            uint8_t block[1024];
+            detail::read_block(detail::block_to_sector(block_num), block);
+
+            uint32_t offset = 0;
+            while (offset < block_size){
+                auto* e = reinterpret_cast<detail::directory_entry*>(block + offset);
+                if (e->rec_len == 0) break;   // corrupt block, bail
+
+                if (e->inode != 0){           // 0 == free/deleted slot
+                    if (count >= max_entries) return count;
+
+                    uint8_t n = e->name_len;  // name_len <= 255, fits names[i][256]
+                    util::memcpy(names[count], e->name, n);
+                    names[count][n] = '\0';
+                    count++;
+                }
+                offset += e->rec_len;
+            }
+        }
+        return count;
     }
 
     // copy a file's contents into out. returns bytes read, or:

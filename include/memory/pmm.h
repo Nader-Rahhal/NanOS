@@ -13,6 +13,7 @@ enum class PMM_STATUS {
 
 class PMM {
 public:
+    PMM() : mmap(nullptr) {}
     PMM(MMap* mmap) : mmap(mmap) {
         total_pages = mmap->usable_memory_pages();
         uint64_t bitmap_bytes = (total_pages + 7) / 8;
